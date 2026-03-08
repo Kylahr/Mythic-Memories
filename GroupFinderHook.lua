@@ -91,7 +91,7 @@ function MPT:ApplyMvpStar(memberFrame)
 		local star = memberFrame:CreateTexture(nil, "OVERLAY", nil, 7)
 		star:SetSize(14, 14)
 		star:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
-		star:SetVertexColor(1, 0.9, 0)
+		star:SetVertexColor(1, 0.82, 0)
 		memberFrame.mptStar = star
 	end
 	-- Position after the name text

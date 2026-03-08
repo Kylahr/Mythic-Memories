@@ -9,11 +9,11 @@ local CLASS_BAR_WIDTH = 3
 
 -- Colors — pushed wider for clear visual separation from table rows
 local DC = {
-	bg        = { 0.10, 0.10, 0.08 },     -- detail background
-	cardOdd   = { 0.17, 0.17, 0.14 },     -- brighter card
-	cardEven  = { 0.13, 0.13, 0.10 },     -- darker card
-	headerBg  = { 0.22, 0.21, 0.17 },     -- header strip
-	actionBg  = { 0.13, 0.13, 0.10 },     -- action bar zone
+	bg        = { 0.15, 0.15, 0.12 },     -- detail background
+	cardOdd   = { 0.22, 0.21, 0.17 },     -- brighter card
+	cardEven  = { 0.18, 0.17, 0.14 },     -- darker card
+	headerBg  = { 0.25, 0.24, 0.20 },     -- header strip
+	actionBg  = { 0.18, 0.17, 0.14 },     -- action bar zone
 	accent    = { 1, 0.82, 0 },
 	accentDim = { 0.7, 0.57, 0 },
 	text      = { 0.92, 0.90, 0.84 },
@@ -271,7 +271,7 @@ function MPT:ExpandRow(row)
 			nameBtn.star:SetSize(16, 16)
 			nameBtn.star:SetPoint("LEFT", nameBtn, "LEFT", 2, 0)
 			nameBtn.star:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
-			nameBtn.star:SetVertexColor(1, 0.9, 0)
+			nameBtn.star:SetVertexColor(1, 0.82, 0)
 
 			nameBtn.label = nameBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
 			nameBtn.label:SetPoint("LEFT", nameBtn, "LEFT", 22, 0)
@@ -293,11 +293,11 @@ function MPT:ExpandRow(row)
 			nameBtn.star:Show()
 			if self:IsViewingRemote() then
 				if inViewList and inLocalList then
-					nameBtn.star:SetDesaturated(false)
-					nameBtn.star:SetVertexColor(0, 1, 0)        -- bright green
+					nameBtn.star:SetDesaturated(true)
+					nameBtn.star:SetVertexColor(0.2, 1, 0.2)    -- bright green
 				elseif inViewList then
 					nameBtn.star:SetDesaturated(true)
-					nameBtn.star:SetVertexColor(0.3, 0.6, 1)    -- bright blue
+					nameBtn.star:SetVertexColor(0.3, 0.7, 1)    -- light vibrant blue
 				else
 					nameBtn.star:SetDesaturated(false)
 					nameBtn.star:SetVertexColor(1, 0.85, 0)     -- bright gold

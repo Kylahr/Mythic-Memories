@@ -381,7 +381,9 @@ function MPT:HookUnitMenus()
 			end)
 
 			local nameRealm = name .. "-" .. server
-			local _, class = UnitClass(name)
+			-- UnitClass needs a unitId, not a name; try the owner's unit or mouseover
+			local unit = owner and not owner:IsForbidden() and owner.GetAttribute and owner:GetAttribute("unit")
+			local _, class = UnitClass(unit or "mouseover")
 
 			if MPT:IsMvp(nameRealm) then
 				rootDescription:CreateButton("Remove from MVP List", function()

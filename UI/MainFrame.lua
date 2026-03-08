@@ -10,12 +10,12 @@ local C = {
 	bg         = { 0.12, 0.12, 0.09 },     -- main frame / dark shell
 	titleBar   = { 0.30, 0.29, 0.23 },     -- title strip (kept for column headers)
 	filterBar  = { 0.16, 0.16, 0.13 },     -- filter bar strip
-	panelBg    = { 0.14, 0.14, 0.11 },     -- legacy card bg
+	panelBg    = { 0.20, 0.19, 0.16 },     -- elevated card/panel bg
 	contentBg  = { 0.18, 0.17, 0.14 },     -- lighter content area inset
 	headerBg   = { 0.30, 0.29, 0.23 },     -- column header bar
 	rowBase    = { 0.18, 0.18, 0.15 },     -- odd rows
 	rowAlt     = { 0.22, 0.21, 0.17 },     -- even rows
-	inputBg    = { 0.10, 0.10, 0.08 },     -- search input fields
+	inputBg    = { 0.30, 0.29, 0.24 },     -- interactive surface, clearly visible on cards
 	btnBg      = { 0.25, 0.24, 0.20 },     -- button background
 	btnHover   = { 0.33, 0.31, 0.25 },     -- button hover
 	accent     = { 1, 0.82, 0 },           -- gold accent
@@ -25,7 +25,7 @@ local C = {
 	textLabel  = { 0.65, 0.63, 0.56 },     -- label text
 	divider    = { 0.28, 0.26, 0.21 },     -- dividers
 	highlight  = { 1, 0.95, 0.8, 0.06 },   -- row hover
-	popupBg    = { 0.13, 0.13, 0.10 },     -- popup backgrounds
+	popupBg    = { 0.20, 0.19, 0.16 },     -- popup/dialog backgrounds (matches panelBg)
 }
 
 -- ── Custom font objects ───────────────────────────────────────
@@ -312,7 +312,7 @@ function MPT:ShowDropdownList(dropdown)
 
 		local listBg = list:CreateTexture(nil, "BACKGROUND")
 		listBg:SetAllPoints()
-		listBg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+		listBg:SetColorTexture(C.inputBg[1], C.inputBg[2], C.inputBg[3], 1)
 
 		list.scrollOffset = 0
 		list.buttons = {}
@@ -420,7 +420,7 @@ function MPT:CreateMainFrame()
 	local SCROLLBAR_WIDTH = 18
 	local tableWidth = getTotalWidth()
 	local tableAreaWidth = math.max(tableWidth + SCROLLBAR_WIDTH + 12, 730)
-	local totalWidth = MVP_PANEL_WIDTH + 2 + tableAreaWidth + PADDING  -- MVP left, 2px gap, table, padding right
+	local totalWidth = MVP_PANEL_WIDTH + 2 + tableAreaWidth  -- MVP left, 2px gap, table (scrollbar flush right)
 	-- 26 (title bar) + 30 (filter bar gap) + HEADER_HEIGHT + rows = exact fit
 	local totalHeight = 26 + 30 + HEADER_HEIGHT + (ROW_HEIGHT * VISIBLE_ROWS)
 
@@ -659,7 +659,7 @@ end
 function MPT:CreateColumnHeaders(parent)
 	local header = CreateFrame("Frame", nil, parent)
 	header:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -30)
-	header:SetPoint("RIGHT", parent, "RIGHT", -14, 0)
+	header:SetPoint("RIGHT", parent, "RIGHT", -6, 0)
 	header:SetHeight(HEADER_HEIGHT)
 
 	local bg = header:CreateTexture(nil, "BACKGROUND")
@@ -682,7 +682,7 @@ end
 function MPT:CreateScrollFrame(parent, tableWidth)
 	local scrollParent = CreateFrame("Frame", nil, parent)
 	scrollParent:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -30 - HEADER_HEIGHT)
-	scrollParent:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -4, 0)
+	scrollParent:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
 	scrollParent:SetClipsChildren(true)
 	-- Fill empty space below rows with the base row color so no contentBg strip shows
 	local scrollBg = scrollParent:CreateTexture(nil, "BACKGROUND")
@@ -709,26 +709,33 @@ function MPT:CreateScrollFrame(parent, tableWidth)
 		if btn then btn:SetSize(1, 1); btn:SetAlpha(0) end
 	end
 
-	-- Custom thin scrollbar track
-	local track = CreateFrame("Frame", nil, scrollParent)
+	-- Custom thin scrollbar track — parented to tableCard so it spans header + rows flush right
+	local track = CreateFrame("Frame", nil, parent)
 	track:SetWidth(6)
-	track:SetPoint("TOPRIGHT", scrollParent, "TOPRIGHT", -2, 0)
-	track:SetPoint("BOTTOMRIGHT", scrollParent, "BOTTOMRIGHT", -2, 0)
+	track:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
+	track:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
 	local trackBg = track:CreateTexture(nil, "BACKGROUND")
 	trackBg:SetAllPoints()
 	trackBg:SetColorTexture(C.bg[1], C.bg[2], C.bg[3], 1)
 
+	-- Thumb guide — thumb travels from column header top to bottom (not into filter bar)
+	local thumbGuide = CreateFrame("Frame", nil, track)
+	thumbGuide:SetWidth(6)
+	thumbGuide:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -29)
+	thumbGuide:SetPoint("BOTTOMRIGHT", track, "BOTTOMRIGHT", 0, 0)
+
 	-- Thumb
-	local thumb = CreateFrame("Frame", nil, track)
+	local thumb = CreateFrame("Frame", nil, thumbGuide)
 	thumb:SetWidth(6)
 	thumb:SetHeight(40)
-	thumb:SetPoint("TOP", track, "TOP")
+	thumb:SetPoint("TOP", thumbGuide, "TOP")
 	thumb:EnableMouse(true)
 	thumb:SetMovable(true)
 	local thumbTex = thumb:CreateTexture(nil, "OVERLAY")
 	thumbTex:SetAllPoints()
 	thumbTex:SetColorTexture(C.divider[1], C.divider[2], C.divider[3], 1)
 	self.mainScrollTrack = track
+	self.mainScrollThumbGuide = thumbGuide
 	self.mainScrollThumb = thumb
 
 	-- Mouse wheel scrolling on the scroll parent
@@ -749,10 +756,10 @@ function MPT:CreateScrollFrame(parent, tableWidth)
 	thumb:SetScript("OnUpdate", function(self)
 		if not self.dragging then return end
 		local _, cursorY = GetCursorPosition()
-		local scale = track:GetEffectiveScale()
+		local scale = thumbGuide:GetEffectiveScale()
 		cursorY = cursorY / scale
-		local top = track:GetTop()
-		local trackH = track:GetHeight()
+		local top = thumbGuide:GetTop()
+		local trackH = thumbGuide:GetHeight()
 		local thumbH = self:GetHeight()
 		local scrollRatio = math.max(0, math.min(1, (top - cursorY - thumbH / 2) / (trackH - thumbH)))
 		local runs = MPT:GetFilteredRuns()
@@ -824,7 +831,7 @@ function MPT:CreateRow(parent, index)
 	mvpStar:SetSize(16, 16)
 	mvpStar:SetPoint("CENTER", row, "LEFT", mvpOff + mvpW / 2, 0)
 	mvpStar:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
-	mvpStar:SetVertexColor(1, 0.9, 0)
+	mvpStar:SetVertexColor(C.accent[1], C.accent[2], C.accent[3])
 	mvpStar:Hide()
 	row.mvpStar = mvpStar
 
@@ -964,8 +971,8 @@ end
 
 function MPT:UpdateMainScrollThumb()
 	local thumb = self.mainScrollThumb
-	local track = self.mainScrollTrack
-	if not thumb or not track then return end
+	local guide = self.mainScrollThumbGuide
+	if not thumb or not guide then return end
 
 	local runs = self:GetFilteredRuns()
 	local totalRows = self:GetTotalVirtualRows(runs)
@@ -975,16 +982,16 @@ function MPT:UpdateMainScrollThumb()
 	end
 
 	thumb:Show()
-	local trackH = track:GetHeight()
+	local guideH = guide:GetHeight()
 	local ratio = VISIBLE_ROWS / totalRows
-	local thumbH = math.max(20, trackH * ratio)
+	local thumbH = math.max(20, guideH * ratio)
 	thumb:SetHeight(thumbH)
 
 	local offset = FauxScrollFrame_GetOffset(self.scrollFrame)
 	local maxOffset = totalRows - VISIBLE_ROWS
 	local scrollRatio = (maxOffset > 0) and (offset / maxOffset) or 0
 	thumb:ClearAllPoints()
-	thumb:SetPoint("TOP", track, "TOP", 0, -scrollRatio * (trackH - thumbH))
+	thumb:SetPoint("TOP", guide, "TOP", 0, -scrollRatio * (guideH - thumbH))
 end
 
 function MPT:GetExpandedDetailHeight(runs)
@@ -1082,7 +1089,7 @@ function MPT:RefreshTable()
 
 			row:ClearAllPoints()
 			row:SetPoint("TOPLEFT", self.scrollParent, "TOPLEFT", 0, -yOffset)
-			row:SetPoint("RIGHT", self.scrollParent, "RIGHT", -10, 0)
+			row:SetPoint("RIGHT", self.scrollParent, "RIGHT", -6, 0)
 
 			-- Alternating row background
 			if dataIdx % 2 == 0 then
@@ -1279,8 +1286,8 @@ function MPT:PopulateRow(row, run)
 		end)
 	end
 
-	-- Role column — white text
-	row.cells[7]:SetTextColor(1, 1, 1)
+	-- Role column — same as other text
+	row.cells[7]:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
 
 	-- Level column — green
 	row.cells[3]:SetTextColor(0.2, 0.8, 0.2)
@@ -1371,7 +1378,7 @@ function MPT:CreateMvpsSidePanel(parent, padding, tableCard)
 	track:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -6, 6)
 	local trackBg = track:CreateTexture(nil, "BACKGROUND")
 	trackBg:SetAllPoints()
-	trackBg:SetColorTexture(C.inputBg[1], C.inputBg[2], C.inputBg[3], 1)
+	trackBg:SetColorTexture(C.bg[1], C.bg[2], C.bg[3], 1)
 	panel.scrollTrack = track
 
 	-- Scrollbar thumb
@@ -1681,20 +1688,47 @@ function MPT:CreateHelpPanel()
 		yOff = yOff - 6
 	end
 
+	local function addIconLine(texture, r, g, b, text, desat)
+		local icon = panel:CreateTexture(nil, "OVERLAY")
+		icon:SetSize(14, 14)
+		icon:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff - 1)
+		icon:SetTexture(texture)
+		if desat then icon:SetDesaturated(true) end
+		icon:SetVertexColor(r, g, b)
+		local fs = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		fs:SetPoint("TOPLEFT", panel, "TOPLEFT", 30, yOff)
+		fs:SetWidth(278)
+		fs:SetJustifyH("LEFT")
+		fs:SetText(text)
+		fs:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		yOff = yOff - (fs:GetStringHeight() + 4)
+	end
+
 	addHeader("Table")
-	addLine("Click a row to expand per-player stats.")
+	addLine("Left-click a row to expand per-player stats.")
+	addLine("Right-click a row to favourite/unfavourite it.")
 	addLine("Click LINK or DESC cells to edit them.")
 	addSpacer()
-	addHeader("MVPs")
-	addLine("Left-click a name in expanded stats to toggle MVP.")
-	addLine("Right-click a name to add MVP with a note.")
-	addLine("Your MVP list is always visible on the right.")
+	addHeader("Favourites")
+	addIconLine("Interface\\COMMON\\FavoritesIcon", C.accent[1], C.accent[2], C.accent[3], "Toggle favourites filter in the toolbar.")
+	addLine("Favourited runs show a gold accent bar.")
 	addSpacer()
-	addHeader("Star Colors (viewing another player)")
-	addLine("|cFFFFD100Gold|r = Your MVP   |cFF4D80FFBlue|r = Their MVP   |cFF33FF33Green|r = Shared")
+	addHeader("Filters")
+	addLine("Use Player/Realm search bars for quick filtering.")
+	addLine("Click Filter for advanced options (dungeon, affix, bonus, role, level).")
+	addSpacer()
+	addHeader("MVPs")
+	addLine("Left-click a name in the tree view to toggle MVP.")
+	addLine("Right-click a name to add MVP with a note.")
+	addLine("MVP list is always visible on the left.")
+	addSpacer()
+	addHeader("Icons")
+	addIconLine("Interface\\GroupFrame\\UI-Group-AssistantIcon", 1, 0.82, 0, "Your MVP")
+	addIconLine("Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.3, 0.7, 1, "Their MVP (viewing shared table)", true)
+	addIconLine("Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.2, 1, 0.2, "Shared MVP (in both lists)", true)
 	addSpacer()
 	addHeader("Sharing")
-	addLine("Right-click a player portrait to view their M+ table.")
+	addLine("Right-click a player portrait to view their M+ table or add them as MVP.")
 	addLine("Use Import in the MVP list to save their MVPs.")
 	addSpacer()
 	addHeader("Slash Commands")
@@ -1737,37 +1771,49 @@ function MPT:ShowRowContextMenu(row)
 	if not row.runData then return end
 	if self.rowContextMenu then self.rowContextMenu:Hide() end
 
+	local runId = row.runData.id
 	local menu = CreateFrame("Frame", nil, self.mainFrame)
-	menu:SetSize(130, 28)
+	menu:SetSize(130, 48)
 	menu:SetFrameStrata("TOOLTIP")
 
 	local bg = menu:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
 	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
 
-	local isFav = self:IsFavourite(row.runData.id)
-	local label = isFav and "Unfavourite" or "Favourite"
-
-	local btn = CreateFrame("Button", nil, menu)
-	btn:SetAllPoints()
-	local btnText = btn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
-	btnText:SetPoint("LEFT", 10, 0)
-	btnText:SetText(label)
-	btnText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
-
-	local btnBg = btn:CreateTexture(nil, "BACKGROUND")
-	btnBg:SetAllPoints()
-	btnBg:SetColorTexture(0, 0, 0, 0)
-	btn:SetScript("OnEnter", function()
-		btnBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
-	end)
-	btn:SetScript("OnLeave", function()
+	local function createMenuBtn(yOffset, label, textColor, onClick)
+		local btn = CreateFrame("Button", nil, menu)
+		btn:SetHeight(22)
+		btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, yOffset)
+		btn:SetPoint("TOPRIGHT", menu, "TOPRIGHT", 0, yOffset)
+		local btnText = btn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		btnText:SetPoint("LEFT", 10, 0)
+		btnText:SetText(label)
+		btnText:SetTextColor(textColor[1], textColor[2], textColor[3])
+		local btnBg = btn:CreateTexture(nil, "BACKGROUND")
+		btnBg:SetAllPoints()
 		btnBg:SetColorTexture(0, 0, 0, 0)
-	end)
-	btn:SetScript("OnClick", function()
-		MPT:ToggleFavourite(row.runData.id)
+		btn:SetScript("OnEnter", function()
+			btnBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
+		end)
+		btn:SetScript("OnLeave", function()
+			btnBg:SetColorTexture(0, 0, 0, 0)
+		end)
+		btn:SetScript("OnClick", function()
+			menu:Hide()
+			onClick()
+		end)
+		return btn
+	end
+
+	local isFav = self:IsFavourite(runId)
+	local favLabel = isFav and "Unfavourite" or "Favourite"
+	createMenuBtn(-2, favLabel, C.textPrimary, function()
+		MPT:ToggleFavourite(runId)
 		MPT:RefreshTable()
-		menu:Hide()
+	end)
+
+	createMenuBtn(-24, "Delete Run", {1, 0.4, 0.4}, function()
+		MPT:ShowDeleteRunConfirm(runId)
 	end)
 
 	-- Position at cursor
@@ -1784,6 +1830,64 @@ function MPT:ShowRowContextMenu(row)
 			self:Hide()
 		end
 	end)
+end
+
+function MPT:ShowDeleteRunConfirm(runId)
+	self:HideAllPopups()
+
+	if not self.deleteRunDialog then
+		local dialog = CreateFrame("Frame", "MPTDeleteRunDialog", UIParent)
+		dialog:SetSize(300, 100)
+		dialog:SetPoint("CENTER", UIParent, "CENTER")
+		dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+		dialog:EnableMouse(true)
+
+		local bg = dialog:CreateTexture(nil, "BACKGROUND")
+		bg:SetAllPoints()
+		bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+		local text = dialog:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		text:SetPoint("TOP", dialog, "TOP", 0, -18)
+		text:SetWidth(270)
+		text:SetJustifyH("CENTER")
+		text:SetTextColor(0.92, 0.90, 0.84)
+		dialog.text = text
+
+		local yesBtn = self:CreateModernButton(dialog, 100, 26, "Yes, Delete")
+		yesBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -8, 14)
+		yesBtn.label:SetTextColor(1, 0.4, 0.4)
+		yesBtn:SetScript("OnEnter", function(self)
+			self.bg:SetColorTexture(0.25, 0.10, 0.08, 1)
+		end)
+		yesBtn:SetScript("OnLeave", function(self)
+			self.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+		end)
+		yesBtn:SetScript("OnClick", function()
+			if dialog.runId then
+				MPT:DeleteRun(dialog.runId)
+				if MPT.expandedRunId == dialog.runId then
+					MPT.expandedRunId = nil
+				end
+				MPT:RefreshTable()
+			end
+			dialog:Hide()
+		end)
+
+		local cancelBtn = self:CreateModernButton(dialog, 100, 26, "Cancel")
+		cancelBtn:SetPoint("BOTTOMLEFT", dialog, "BOTTOM", 8, 14)
+		cancelBtn:SetScript("OnClick", function()
+			dialog:Hide()
+		end)
+
+		dialog:Hide()
+		self.deleteRunDialog = dialog
+	end
+
+	local run = self:GetRun(runId)
+	local desc = run and run.dungeon or "this run"
+	self.deleteRunDialog.runId = runId
+	self.deleteRunDialog.text:SetText("|cFFFFD100Delete|r " .. desc .. "? This cannot be undone.")
+	self.deleteRunDialog:Show()
 end
 
 -- ── Favourites toggle ───────────────────────────────────────────

@@ -183,6 +183,19 @@ function MPT:CollectFilterValues()
 	return dungeons, affixes
 end
 
+function MPT:DeleteRun(id)
+	for i, run in ipairs(self.db.global.runs) do
+		if run.id == id then
+			table.remove(self.db.global.runs, i)
+			if self.db.global.favourites then
+				self.db.global.favourites[id] = nil
+			end
+			return true
+		end
+	end
+	return false
+end
+
 function MPT:UpdateRunField(id, field, value)
 	local run = self:GetRun(id)
 	if run then

@@ -35,6 +35,7 @@ function MPT:HideAllPopups()
 		end
 	end
 	if self.rowContextMenu then self.rowContextMenu:Hide() end
+	if self.deleteRunDialog then self.deleteRunDialog:Hide() end
 end
 
 -- ── Shared scrollable multi-line edit area ────────────────────
@@ -46,7 +47,7 @@ local function CreateScrollableEditBox(parent, scrollName, editBoxName, opts)
 
 	local areaBg = area:CreateTexture(nil, "BACKGROUND")
 	areaBg:SetAllPoints()
-	areaBg:SetColorTexture(0.13, 0.13, 0.10, 1)
+	areaBg:SetColorTexture(0.30, 0.29, 0.24, 1)
 
 	-- Thin border
 	addBorder(area, "TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", nil, 1)
@@ -82,7 +83,7 @@ local function CreateScrollableEditBox(parent, scrollName, editBoxName, opts)
 	track:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -3, 4)
 	local trackBg = track:CreateTexture(nil, "BACKGROUND")
 	trackBg:SetAllPoints()
-	trackBg:SetColorTexture(0.13, 0.13, 0.10, 0.9)
+	trackBg:SetColorTexture(0.25, 0.24, 0.20, 0.9)
 
 	-- Thumb
 	local thumb = CreateFrame("Frame", nil, track)
@@ -201,7 +202,7 @@ function MPT:CreateEditPopup()
 
 	local bg = popup:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.13, 0.13, 0.10, 1)
+	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
 
 	local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	title:SetPoint("TOP", popup, "TOP", 0, -10)
@@ -214,7 +215,7 @@ function MPT:CreateEditPopup()
 	linkContainer:SetPoint("TOPLEFT", popup, "TOPLEFT", 12, -32)
 	local linkContainerBg = linkContainer:CreateTexture(nil, "BACKGROUND")
 	linkContainerBg:SetAllPoints()
-	linkContainerBg:SetColorTexture(0.13, 0.13, 0.10, 1)
+	linkContainerBg:SetColorTexture(0.30, 0.29, 0.24, 1)
 	-- Border (matching desc/note area)
 	addBorder(linkContainer, "TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", nil, 1)
 	addBorder(linkContainer, "BOTTOMLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "BOTTOMRIGHT", nil, 1)
@@ -378,7 +379,7 @@ function MPT:CreateMvpDropdown()
 
 	local bg = dropdown:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.13, 0.13, 0.10, 1)
+	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
 
 	dropdown:Hide()
 	self.mvpDropdown = dropdown
@@ -434,7 +435,7 @@ function MPT:CreateLinkCopyPopup()
 
 	local bg = popup:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.13, 0.13, 0.10, 1)
+	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
 
 	-- Custom styled input
 	local container = CreateFrame("Frame", nil, popup)
@@ -442,7 +443,7 @@ function MPT:CreateLinkCopyPopup()
 	container:SetPoint("TOP", popup, "TOP", 0, -5)
 	local containerBg = container:CreateTexture(nil, "BACKGROUND", nil, 1)
 	containerBg:SetAllPoints()
-	containerBg:SetColorTexture(0.13, 0.13, 0.10, 1)
+	containerBg:SetColorTexture(0.30, 0.29, 0.24, 1)
 	-- Border
 	addBorder(container, "TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", nil, 1)
 	addBorder(container, "BOTTOMLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "BOTTOMRIGHT", nil, 1)
@@ -513,7 +514,7 @@ function MPT:ShowNotePopup(nameRealm, anchorFrame, class)
 
 	local popup = self.notePopup
 	popup.nameRealm = nameRealm
-	popup.title:SetText("Note: " .. self:ClassColoredName(nameRealm, class))
+	popup.title:SetText("|cFFFFD100Note:|r " .. self:ClassColoredName(nameRealm, class))
 
 	local note = self:GetMvpNote(nameRealm) or ""
 	popup.noteBox:SetText(note)
@@ -541,12 +542,12 @@ function MPT:CreateNotePopup()
 
 	local bg = popup:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.12, 0.12, 0.09, 1)
+	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
 
 	local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	title:SetPoint("TOP", popup, "TOP", 0, -8)
 	title:SetWidth(340)
-	title:SetTextColor(1, 0.82, 0)
+	title:SetTextColor(0.92, 0.90, 0.84)
 	popup.title = title
 
 	-- Dark inset scrollable text area (same component as description editor)
@@ -607,7 +608,7 @@ function MPT:ShowRemoveMvpConfirm(nameRealm, class)
 	dialog.nameRealm = nameRealm
 	local note = self:GetMvpNote(nameRealm) or ""
 	local colored = self:ClassColoredName(nameRealm, class)
-	dialog.text:SetText("Remove " .. colored .. " from MVPs?\nThis will delete their note:\n\"" .. note .. "\"")
+	dialog.text:SetText("|cFFFFD100Remove|r " .. colored .. " |cFFFFD100from MVPs?\nThis will delete their note:\n\"|r" .. note .. "|cFFFFD100\"|r")
 	dialog:Show()
 end
 
@@ -620,12 +621,13 @@ function MPT:CreateRemoveMvpDialog()
 
 	local bg = dialog:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.13, 0.13, 0.10, 1)
+	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
 
-	local text = dialog:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local text = dialog:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
 	text:SetPoint("TOP", dialog, "TOP", 0, -16)
 	text:SetWidth(290)
 	text:SetJustifyH("CENTER")
+	text:SetTextColor(0.92, 0.90, 0.84)
 	dialog.text = text
 
 	local yesBtn = self:CreateModernButton(dialog, 100, 26, "Yes, Remove")
@@ -635,7 +637,7 @@ function MPT:CreateRemoveMvpDialog()
 		self.bg:SetColorTexture(0.25, 0.10, 0.08, 1)
 	end)
 	yesBtn:SetScript("OnLeave", function(self)
-		self.bg:SetColorTexture(0.12, 0.11, 0.09, 1)
+		self.bg:SetColorTexture(0.25, 0.24, 0.20, 1)
 	end)
 	yesBtn:SetScript("OnClick", function()
 		if dialog.nameRealm then
@@ -668,7 +670,7 @@ function MPT:ShowAddNoteDialog(nameRealm, class)
 	dialog.nameRealm = nameRealm
 	dialog.class = class
 	local colored = self:ClassColoredName(nameRealm, class)
-	dialog.text:SetText("Add note for " .. colored .. "?")
+	dialog.text:SetText("|cFFFFD100Add note for|r " .. colored .. "|cFFFFD100?|r")
 	dialog:Show()
 end
 
@@ -681,12 +683,13 @@ function MPT:CreateAddNoteDialog()
 
 	local bg = dialog:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.13, 0.13, 0.10, 1)
+	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
 
-	local text = dialog:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local text = dialog:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
 	text:SetPoint("TOP", dialog, "TOP", 0, -20)
 	text:SetWidth(290)
 	text:SetJustifyH("CENTER")
+	text:SetTextColor(0.92, 0.90, 0.84)
 	dialog.text = text
 
 	local yesBtn = self:CreateModernButton(dialog, 80, 26, "Yes")
