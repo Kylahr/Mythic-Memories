@@ -1,0 +1,384 @@
+local _, MPT = ...
+
+local COMM_PREFIX = "MPT"
+local MAX_SHARED_RUNS = 50
+local REQUEST_TIMEOUT = 10
+local LibDeflate = LibStub and LibStub("LibDeflate", true) or nil
+
+-- ── Central comm dispatcher ──────────────────────────────────────
+
+function MPT:TableShare_Enable()
+	C_ChatInfo.RegisterAddonMessagePrefix(COMM_PREFIX)
+	self:RegisterComm(COMM_PREFIX, "OnCommReceived")
+
+	-- Override ChatThrottleLib's conservative defaults (same as TRP3/Chomp)
+	if ChatThrottleLib then
+		ChatThrottleLib.MAX_CPS = math.max(ChatThrottleLib.MAX_CPS, 2048)
+		ChatThrottleLib.BURST = math.max(ChatThrottleLib.BURST, 6144)
+		ChatThrottleLib.MSG_OVERHEAD = math.min(32, ChatThrottleLib.MSG_OVERHEAD)
+	end
+end
+
+function MPT:OnCommReceived(prefix, message, distribution, sender)
+	local myName = UnitName("player")
+	if sender == myName then return end
+
+	local ok, msgType, data = self:Deserialize(message)
+	if not ok then return end
+
+	-- MVP sync messages (from MvpSync.lua)
+	if msgType == "SYNC_REQUEST" then
+		self:SendFullMvpList(sender)
+	elseif msgType == "SYNC_FULL" then
+		self:MergeMvpList(data or {})
+	elseif msgType == "MVP_ADD" then
+		if data and data.name then
+			self:AddMvp(data.name, data.addedBy or sender, data.class, data.note)
+		end
+	elseif msgType == "MVP_REMOVE" then
+		if data and data.name then
+			self:RemoveMvp(data.name)
+		end
+	-- Table sharing messages
+	elseif msgType == "TABLE_REQ" then
+		self:OnTableRequest(sender)
+	elseif msgType == "TABLE_RESP" then
+		self:OnTableResponse(sender, data)
+	elseif msgType == "TABLE_RESP_Z" then
+		self:OnTableResponseCompressed(sender, data)
+	elseif msgType == "TABLE_DENIED" then
+		self:OnTableDenied(sender)
+	end
+end
+
+-- ── Table request / response ─────────────────────────────────────
+
+function MPT:RequestTable(name, realm)
+	if self.pendingTableRequest then
+		self:Print("Already waiting for a table response...")
+		return
+	end
+
+	local target = name
+	if realm and realm ~= "" then
+		target = name .. "-" .. realm
+	end
+
+	self:Print("Requesting M+ table from " .. target .. "...")
+	self.pendingTableRequest = target
+
+	local msg = self:Serialize("TABLE_REQ", {})
+	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", target)
+
+	-- Timeout
+	self.tableRequestTimer = C_Timer.After(REQUEST_TIMEOUT, function()
+		if self.pendingTableRequest then
+			self:Print(self.pendingTableRequest .. " did not respond. They may not have Mythic Memories or sharing is disabled.")
+			self.pendingTableRequest = nil
+		end
+	end)
+end
+
+-- ── Compact wire format ──────────────────────────────────────────
+-- Short keys, merged stats into members, no redundancy.
+-- ~300 bytes/run instead of ~900. 12 runs fits in one burst.
+
+function MPT:PackRunForShare(run)
+	local members = {}
+	for _, m in ipairs(run.members or {}) do
+		local s = (run.playerStats or {})[m.guid] or {}
+		local entry = {
+			n = m.name,
+			r = m.realm,
+			c = m.class,
+			rl = m.role,
+		}
+		-- Only include non-zero stats
+		if (s.damage or 0) > 0 then entry.dm = s.damage end
+		if (s.dps or 0) > 0 then entry.dp = s.dps end
+		if (s.healing or 0) > 0 then entry.hl = s.healing end
+		if (s.hps or 0) > 0 then entry.hp = s.hps end
+		if (s.deaths or 0) > 0 then entry.dt = s.deaths end
+		if (s.interrupts or 0) > 0 then entry.ir = s.interrupts end
+		members[#members + 1] = entry
+	end
+
+	local packed = {
+		i = run.id,
+		d = run.date,
+		dn = run.dungeon,
+		l = run.level,
+		t = run.timeStr,
+		a = run.affix,
+		b = run.bonus,
+		o = run.onTime,
+		td = run.totalDeaths,
+		m = members,
+	}
+	if run.link and run.link ~= "" then packed.lk = run.link end
+	if run.description and run.description ~= "" then packed.dc = run.description end
+	return packed
+end
+
+function MPT:UnpackSharedRun(packed)
+	local members = {}
+	local playerStats = {}
+	for idx, pm in ipairs(packed.m or {}) do
+		local guid = "shared-" .. idx
+		members[#members + 1] = {
+			name = pm.n,
+			realm = pm.r,
+			class = pm.c,
+			role = pm.rl,
+			guid = guid,
+		}
+		playerStats[guid] = {
+			name = pm.n,
+			class = pm.c,
+			role = pm.rl,
+			damage = pm.dm or 0,
+			dps = pm.dp or 0,
+			healing = pm.hl or 0,
+			hps = pm.hp or 0,
+			deaths = pm.dt or 0,
+			interrupts = pm.ir or 0,
+		}
+	end
+
+	return {
+		id = packed.i,
+		date = packed.d,
+		dungeon = packed.dn,
+		level = packed.l,
+		timeStr = packed.t,
+		affix = packed.a,
+		bonus = packed.b,
+		onTime = packed.o,
+		totalDeaths = packed.td or 0,
+		members = members,
+		playerStats = playerStats,
+		link = packed.lk or "",
+		description = packed.dc or "",
+		mvps = {},
+	}
+end
+
+function MPT:OnTableRequest(sender)
+	if self.db.global.shareTable == false then
+		local msg = self:Serialize("TABLE_DENIED", {})
+		self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
+		return
+	end
+
+	local runs = self.db.global.runs or {}
+	local packed = {}
+	local limit = self.shareLimit or MAX_SHARED_RUNS
+	local count = math.min(#runs, limit)
+	for i = 1, count do
+		packed[i] = self:PackRunForShare(runs[i])
+	end
+
+	-- MVPs: nameRealm -> { class, note }
+	local mvps = {}
+	for nameRealm, data in pairs(self.db.global.mvps or {}) do
+		mvps[nameRealm] = {
+			c = data.class or nil,
+			n = data.note or nil,
+		}
+	end
+
+	local data = { r = packed, v = mvps }
+
+	local serialized = self:Serialize("TABLE_RESP", data)
+
+	-- Compress with LibDeflate if available
+	if LibDeflate then
+		local compressed = LibDeflate:CompressDeflate(serialized, { level = 1 })
+		local encoded = LibDeflate:EncodeForWoWAddonChannel(compressed)
+		local msg = self:Serialize("TABLE_RESP_Z", encoded)
+		self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender, "ALERT")
+	else
+		self:SendCommMessage(COMM_PREFIX, serialized, "WHISPER", sender, "ALERT")
+	end
+end
+
+function MPT:OnTableResponse(sender, data)
+	if not self.pendingTableRequest then return end
+
+	self.pendingTableRequest = nil
+
+	if not data or not data.r then
+		self:Print("Received invalid data from " .. sender)
+		return
+	end
+
+	-- Unpack compact format back to normal run objects
+	local runs = {}
+	for i, packed in ipairs(data.r) do
+		runs[i] = self:UnpackSharedRun(packed)
+	end
+
+	-- Unpack MVPs: value is table { c=class, n=note } or legacy class/true
+	local mvps = {}
+	for nameRealm, val in pairs(data.v or {}) do
+		if type(val) == "table" then
+			mvps[nameRealm] = {
+				class = val.c or nil,
+				note = val.n or nil,
+			}
+		else
+			-- Legacy format: value is class string or true
+			mvps[nameRealm] = {
+				class = (val ~= true) and val or nil,
+			}
+		end
+	end
+
+	self:EnterViewMode(sender, { runs = runs, mvps = mvps })
+end
+
+function MPT:OnTableResponseCompressed(sender, encoded)
+	if not self.pendingTableRequest then return end
+
+	if not LibDeflate or not encoded then
+		self:Print("Received compressed data but LibDeflate is not available.")
+		self.pendingTableRequest = nil
+		return
+	end
+
+	local compressed = LibDeflate:DecodeForWoWAddonChannel(encoded)
+	if not compressed then
+		self:Print("Failed to decode data from " .. sender)
+		self.pendingTableRequest = nil
+		return
+	end
+
+	local serialized = LibDeflate:DecompressDeflate(compressed)
+	if not serialized then
+		self:Print("Failed to decompress data from " .. sender)
+		self.pendingTableRequest = nil
+		return
+	end
+
+	local ok, msgType, data = self:Deserialize(serialized)
+	if not ok or msgType ~= "TABLE_RESP" then
+		self:Print("Received invalid data from " .. sender)
+		self.pendingTableRequest = nil
+		return
+	end
+
+	self:OnTableResponse(sender, data)
+end
+
+function MPT:OnTableDenied(sender)
+	if not self.pendingTableRequest then return end
+
+	self.pendingTableRequest = nil
+	self:Print(sender .. " has table sharing disabled.")
+end
+
+-- ── View mode ────────────────────────────────────────────────────
+
+function MPT:EnterViewMode(playerName, data)
+	-- Ensure mainFrame exists BEFORE setting viewingData
+	-- (CreateMainFrame ends with frame:Hide() which triggers OnHide,
+	--  and OnHide clears viewingData if viewingPlayer is set)
+	if not self.mainFrame then
+		self:CreateMainFrame()
+	end
+
+	self.viewingPlayer = playerName
+	self.viewingData = {
+		runs = data.runs or {},
+		mvps = data.mvps or {},
+	}
+
+	self.expandedRunId = nil
+	self:HideAllPopups()
+
+	self:UpdateViewModeUI()
+	self.mainFrame:Show()
+	self:RefreshTable()
+	self:RefreshMvpsSidePanel()
+
+	self:Print("Viewing " .. playerName .. "'s M+ table (" .. #self.viewingData.runs .. " runs)")
+end
+
+function MPT:ExitViewMode()
+	self.viewingPlayer = nil
+	self.viewingData = nil
+
+	self.expandedRunId = nil
+	self:HideAllPopups()
+
+	self:UpdateViewModeUI()
+	self:RefreshTable()
+	self:RefreshMvpsSidePanel()
+end
+
+function MPT:ImportViewedMvps()
+	if not self.viewingData or not self.viewingData.mvps then
+		self:Print("No MVP data to import.")
+		return
+	end
+
+	local added = 0
+	local skipped = 0
+	local playerName = UnitName("player")
+
+	for nameRealm, data in pairs(self.viewingData.mvps) do
+		if self:AddMvp(nameRealm, playerName, data.class, data.note) then
+			added = added + 1
+		else
+			skipped = skipped + 1
+		end
+	end
+
+	if added > 0 then
+		self:OnMvpChanged()
+	end
+
+	self:Print("Imported " .. added .. " new MVP(s). " .. skipped .. " already in your list.")
+end
+
+function MPT:IsViewingRemote()
+	return self.viewingPlayer ~= nil
+end
+
+-- ── Unit menu hook (TWW 11.x Menu API) ──────────────────────────
+
+function MPT:HookUnitMenus()
+	if not Menu or not Menu.ModifyMenu then return end
+
+	local menuTags = {
+		"MENU_UNIT_PLAYER",
+		"MENU_UNIT_PARTY",
+		"MENU_UNIT_RAID",
+		"MENU_UNIT_RAID_PLAYER",
+		"MENU_UNIT_FRIEND",
+	}
+
+	for _, menuTag in ipairs(menuTags) do
+		Menu.ModifyMenu(menuTag, function(owner, rootDescription, contextData)
+			if not owner or owner:IsForbidden() then return end
+			if not contextData then return end
+
+			-- Get player name and server from context (like TRP3 does)
+			local name = contextData.name
+			local server = contextData.server
+
+			if not name then return end
+			if not server or server == "" then
+				server = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName()
+			end
+
+			-- Don't show for self
+			local myName = UnitName("player")
+			if name == myName then return end
+
+			rootDescription:CreateButton("View M+ Table", function()
+				MPT:RequestTable(name, server)
+			end)
+		end)
+	end
+end
