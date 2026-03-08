@@ -7,11 +7,12 @@ local MVP_PANEL_WIDTH = 200
 
 -- ── Sepia/grey palette (wider contrast range) ────────────────
 local C = {
-	bg         = { 0.12, 0.12, 0.09 },     -- main frame / canvas
-	titleBar   = { 0.20, 0.20, 0.16 },     -- title strip
+	bg         = { 0.12, 0.12, 0.09 },     -- main frame / dark shell
+	titleBar   = { 0.30, 0.29, 0.23 },     -- title strip (kept for column headers)
 	filterBar  = { 0.16, 0.16, 0.13 },     -- filter bar strip
-	panelBg    = { 0.14, 0.14, 0.11 },     -- table card / MVP card
-	headerBg   = { 0.23, 0.22, 0.18 },     -- column header bar
+	panelBg    = { 0.14, 0.14, 0.11 },     -- legacy card bg
+	contentBg  = { 0.18, 0.17, 0.14 },     -- lighter content area inset
+	headerBg   = { 0.30, 0.29, 0.23 },     -- column header bar
 	rowBase    = { 0.18, 0.18, 0.15 },     -- odd rows
 	rowAlt     = { 0.22, 0.21, 0.17 },     -- even rows
 	inputBg    = { 0.10, 0.10, 0.08 },     -- search input fields
@@ -104,7 +105,7 @@ function MPT:CreateModernButton(parent, width, height, text)
 end
 
 -- Custom styled search input (replaces ugly InputBoxTemplate)
-function MPT:CreateSearchInput(parent, name, width)
+function MPT:CreateSearchInput(parent, name, width, showClearX)
 	local container = CreateFrame("Frame", nil, parent)
 	container:SetSize(width, 22)
 
@@ -117,6 +118,39 @@ function MPT:CreateSearchInput(parent, name, width)
 	editBox:SetPoint("BOTTOMRIGHT", -6, 2)
 	editBox:SetAutoFocus(false)
 	editBox:SetFontObject("MPTFont_Cell")
+
+	if showClearX then
+		local clearBtn = CreateFrame("Button", nil, container)
+		clearBtn:SetSize(14, 14)
+		clearBtn:SetPoint("RIGHT", container, "RIGHT", -4, 0)
+		local clearLabel = clearBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+		clearLabel:SetPoint("CENTER", 0, 0)
+		clearLabel:SetText("x")
+		clearLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		clearBtn:SetScript("OnEnter", function()
+			clearLabel:SetTextColor(1, 0.3, 0.3)
+		end)
+		clearBtn:SetScript("OnLeave", function()
+			clearLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		end)
+		clearBtn:SetScript("OnClick", function()
+			editBox:SetText("")
+			editBox:ClearFocus()
+			clearBtn:Hide()
+			MPT:ApplyFilters()
+		end)
+		clearBtn:Hide()
+		editBox:SetPoint("BOTTOMRIGHT", -18, 2)
+
+		local function updateClearBtn()
+			if editBox:GetText() ~= "" then
+				clearBtn:Show()
+			else
+				clearBtn:Hide()
+			end
+		end
+		editBox:SetScript("OnTextChanged", updateClearBtn)
+	end
 
 	container.editBox = editBox
 	return container
@@ -193,6 +227,184 @@ function MPT:CreateCloseButton(parent)
 	return btn
 end
 
+-- ── Custom dropdown widget ────────────────────────────────────
+function MPT:CreateDropdown(parent, width, defaultText)
+	local dropdown = CreateFrame("Frame", nil, parent)
+	dropdown:SetSize(width, 22)
+
+	local bg = dropdown:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(C.inputBg[1], C.inputBg[2], C.inputBg[3], 1)
+
+	local selectedText = dropdown:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+	selectedText:SetPoint("LEFT", 6, 0)
+	selectedText:SetPoint("RIGHT", -18, 0)
+	selectedText:SetJustifyH("LEFT")
+	selectedText:SetText(defaultText)
+	selectedText:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	dropdown.selectedText = selectedText
+
+	local arrow = dropdown:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+	arrow:SetPoint("RIGHT", -4, 0)
+	arrow:SetText("v")
+	arrow:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+
+	dropdown._value = ""
+	dropdown._defaultText = defaultText
+	dropdown._listFrame = nil
+
+	dropdown.SetValue = function(self, value, displayText)
+		self._value = value
+		if value == "" then
+			self.selectedText:SetText(self._defaultText)
+			self.selectedText:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		else
+			self.selectedText:SetText(displayText or value)
+			self.selectedText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		end
+		if self._listFrame then self._listFrame:Hide() end
+	end
+	dropdown.GetValue = function(self) return self._value end
+
+	dropdown.SetItems = function(self, items)
+		self._items = items
+	end
+
+	local btn = CreateFrame("Button", nil, dropdown)
+	btn:SetAllPoints()
+	btn:SetScript("OnEnter", function()
+		bg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 1)
+	end)
+	btn:SetScript("OnLeave", function()
+		bg:SetColorTexture(C.inputBg[1], C.inputBg[2], C.inputBg[3], 1)
+	end)
+	btn:SetScript("OnClick", function()
+		if dropdown._listFrame and dropdown._listFrame:IsShown() then
+			dropdown._listFrame:Hide()
+			return
+		end
+		MPT:ShowDropdownList(dropdown)
+	end)
+
+	return dropdown
+end
+
+function MPT:ShowDropdownList(dropdown)
+	-- Hide any other open dropdown lists
+	if self._activeDropdown and self._activeDropdown ~= dropdown and self._activeDropdown._listFrame then
+		self._activeDropdown._listFrame:Hide()
+	end
+	self._activeDropdown = dropdown
+
+	local items = dropdown._items or {}
+	local ITEM_HEIGHT = 20
+	local MAX_VISIBLE = 10
+	local listWidth = dropdown:GetWidth()
+	local visibleCount = math.min(#items + 1, MAX_VISIBLE)  -- +1 for "All" option
+	local listHeight = visibleCount * ITEM_HEIGHT + 4
+
+	if not dropdown._listFrame then
+		local list = CreateFrame("Frame", nil, dropdown)
+		list:SetFrameStrata("TOOLTIP")
+		list:SetWidth(listWidth)
+		list:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
+		list:SetClipsChildren(true)
+
+		local listBg = list:CreateTexture(nil, "BACKGROUND")
+		listBg:SetAllPoints()
+		listBg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+		list.scrollOffset = 0
+		list.buttons = {}
+		list:EnableMouseWheel(true)
+		list:SetScript("OnMouseWheel", function(_, delta)
+			local totalItems = #(dropdown._items or {}) + 1
+			local maxOffset = math.max(0, totalItems - MAX_VISIBLE)
+			list.scrollOffset = math.max(0, math.min(maxOffset, list.scrollOffset - delta))
+			MPT:RefreshDropdownList(dropdown)
+		end)
+
+		dropdown._listFrame = list
+	end
+
+	local list = dropdown._listFrame
+	list:SetHeight(listHeight)
+	list.scrollOffset = 0
+
+	-- Create enough buttons
+	local totalSlots = visibleCount
+	for i = #list.buttons + 1, totalSlots do
+		local itemBtn = CreateFrame("Button", nil, list)
+		itemBtn:SetHeight(ITEM_HEIGHT)
+		itemBtn:SetPoint("TOPLEFT", list, "TOPLEFT", 2, -(i - 1) * ITEM_HEIGHT - 2)
+		itemBtn:SetPoint("TOPRIGHT", list, "TOPRIGHT", -2, -(i - 1) * ITEM_HEIGHT - 2)
+
+		local itemBg = itemBtn:CreateTexture(nil, "BACKGROUND")
+		itemBg:SetAllPoints()
+		itemBg:SetColorTexture(0, 0, 0, 0)
+		itemBtn._bg = itemBg
+
+		local itemText = itemBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		itemText:SetPoint("LEFT", 6, 0)
+		itemText:SetPoint("RIGHT", -6, 0)
+		itemText:SetJustifyH("LEFT")
+		itemBtn._text = itemText
+
+		itemBtn:SetScript("OnEnter", function(self)
+			self._bg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
+		end)
+		itemBtn:SetScript("OnLeave", function(self)
+			self._bg:SetColorTexture(0, 0, 0, 0)
+		end)
+
+		list.buttons[i] = itemBtn
+	end
+
+	self:RefreshDropdownList(dropdown)
+	list:Show()
+end
+
+function MPT:RefreshDropdownList(dropdown)
+	local list = dropdown._listFrame
+	if not list then return end
+	local items = dropdown._items or {}
+	local offset = list.scrollOffset or 0
+	local MAX_VISIBLE = 10
+	local ITEM_HEIGHT = 20
+
+	-- Build display list: "All" + items
+	local allItems = { { value = "", display = dropdown._defaultText } }
+	for _, item in ipairs(items) do
+		if type(item) == "table" then
+			allItems[#allItems + 1] = item
+		else
+			allItems[#allItems + 1] = { value = item, display = item }
+		end
+	end
+
+	local visibleCount = math.min(#allItems, MAX_VISIBLE)
+	list:SetHeight(visibleCount * ITEM_HEIGHT + 4)
+
+	for i, btn in ipairs(list.buttons) do
+		local idx = i + offset
+		if idx <= #allItems then
+			local item = allItems[idx]
+			btn._text:SetText(item.display)
+			if item.value == dropdown._value then
+				btn._text:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+			else
+				btn._text:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+			end
+			btn:SetScript("OnClick", function()
+				dropdown:SetValue(item.value, item.display)
+			end)
+			btn:Show()
+		else
+			btn:Hide()
+		end
+	end
+end
+
 local function getTotalWidth()
 	local total = 0
 	for _, col in ipairs(COLUMNS) do
@@ -208,8 +420,9 @@ function MPT:CreateMainFrame()
 	local SCROLLBAR_WIDTH = 18
 	local tableWidth = getTotalWidth()
 	local tableAreaWidth = math.max(tableWidth + SCROLLBAR_WIDTH + 12, 730)
-	local totalWidth = PADDING + tableAreaWidth + 4 + MVP_PANEL_WIDTH + PADDING  -- 4px gap between cards
-	local totalHeight = HEADER_HEIGHT + (ROW_HEIGHT * VISIBLE_ROWS) + 100
+	local totalWidth = MVP_PANEL_WIDTH + 2 + tableAreaWidth + PADDING  -- MVP left, 2px gap, table, padding right
+	-- 26 (title bar) + 30 (filter bar gap) + HEADER_HEIGHT + rows = exact fit
+	local totalHeight = 26 + 30 + HEADER_HEIGHT + (ROW_HEIGHT * VISIBLE_ROWS)
 
 	local frame = CreateFrame("Frame", "MPTMainFrame", UIParent)
 	frame:SetSize(totalWidth, totalHeight)
@@ -235,7 +448,7 @@ function MPT:CreateMainFrame()
 	titleBar:SetHeight(32)
 	local titleBarBg = titleBar:CreateTexture(nil, "BACKGROUND")
 	titleBarBg:SetAllPoints()
-	titleBarBg:SetColorTexture(C.titleBar[1], C.titleBar[2], C.titleBar[3], 1)
+	titleBarBg:SetColorTexture(C.bg[1], C.bg[2], C.bg[3], 1)
 	titleBarBg:SetDrawLayer("BACKGROUND", 2)
 
 	local title = frame:CreateFontString(nil, "OVERLAY", "MPTFont_Title")
@@ -244,21 +457,21 @@ function MPT:CreateMainFrame()
 	self.mainTitle = title
 
 	local closeBtn = self:CreateCloseButton(frame)
-	closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+	closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -4)
 
 	-- Back button (visible only in view mode)
 	local backBtn = self:CreateModernButton(frame, 60, 20, "< Back")
-	backBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -6)
+	backBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -4)
 	backBtn:SetScript("OnClick", function()
 		MPT:ExitViewMode()
 	end)
 	backBtn:Hide()
 	self.backBtn = backBtn
 
-	-- Help button (top-left, hidden in view mode) — click to toggle help panel
+	-- Help button (top-right, next to close) — click to toggle help panel
 	local helpBtn = CreateFrame("Button", nil, frame)
 	helpBtn:SetSize(20, 20)
-	helpBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -6)
+	helpBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
 
 	local helpLabel = helpBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
 	helpLabel:SetPoint("CENTER", 0, 0)
@@ -269,16 +482,46 @@ function MPT:CreateMainFrame()
 		helpLabel:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
 	end)
 	helpBtn:SetScript("OnLeave", function()
-		helpLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		if not (MPT.helpPanel and MPT.helpPanel:IsShown()) then
+			helpLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		end
 	end)
 	helpBtn:SetScript("OnClick", function()
 		MPT:ToggleHelpPanel()
 	end)
 	self.helpBtn = helpBtn
+	self.helpLabel = helpLabel
+
+	-- Options (cog) button — top-right, next to help
+	local optionsBtn = CreateFrame("Button", nil, frame)
+	optionsBtn:SetSize(20, 20)
+	optionsBtn:SetPoint("RIGHT", helpBtn, "LEFT", -4, 0)
+
+	local cogIcon = optionsBtn:CreateTexture(nil, "ARTWORK")
+	cogIcon:SetSize(14, 14)
+	cogIcon:SetPoint("CENTER")
+	cogIcon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+	cogIcon:SetDesaturated(true)
+	cogIcon:SetVertexColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	optionsBtn.cogIcon = cogIcon
+
+	optionsBtn:SetScript("OnEnter", function()
+		cogIcon:SetVertexColor(C.accent[1], C.accent[2], C.accent[3])
+	end)
+	optionsBtn:SetScript("OnLeave", function()
+		cogIcon:SetVertexColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	end)
+	optionsBtn:SetScript("OnClick", function()
+		MPT:ToggleOptionsPanel()
+	end)
+	self.optionsBtn = optionsBtn
 
 	frame:SetScript("OnHide", function()
 		MPT:HideAllPopups()
 		MPT.expandedRunId = nil
+		-- Reset filters on close
+		MPT:ResetFilterPopup()
+		MPT.advancedFilters = nil
 		-- Clear view mode when closing
 		if MPT.viewingPlayer then
 			MPT.viewingPlayer = nil
@@ -287,19 +530,18 @@ function MPT:CreateMainFrame()
 		end
 	end)
 
-	-- ── Filter bar card ─────────────────────────────────────────
-	self:CreateFilterBar(frame)
-
-	-- ── Table card (elevated panel for headers + rows) ──────────
+	-- ── Content card (lighter inset area for filter + table) ────
 	local tableCard = CreateFrame("Frame", nil, frame)
-	tableCard:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -62)
-	tableCard:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-	tableCard:SetWidth(tableAreaWidth)
+	tableCard:SetPoint("TOPLEFT", frame, "TOPLEFT", MVP_PANEL_WIDTH + 2, -26)
+	tableCard:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
 	local tcBg = tableCard:CreateTexture(nil, "BACKGROUND")
 	tcBg:SetAllPoints()
-	tcBg:SetColorTexture(C.panelBg[1], C.panelBg[2], C.panelBg[3], 1)
-	tcBg:SetDrawLayer("BACKGROUND", 2)
+	tcBg:SetColorTexture(C.contentBg[1], C.contentBg[2], C.contentBg[3], 1)
+	tcBg:SetDrawLayer("BACKGROUND", 3)
 	self.tableCard = tableCard
+
+	-- Filter bar inside the content card
+	self:CreateFilterBar(tableCard)
 
 	self:CreateColumnHeaders(tableCard)
 	self:CreateScrollFrame(tableCard, tableWidth)
@@ -313,20 +555,20 @@ end
 
 function MPT:CreateFilterBar(parent)
 	local bar = CreateFrame("Frame", nil, parent)
-	bar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -32)
-	bar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -32)
+	bar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+	bar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
 	bar:SetHeight(28)
 	-- Filter bar background (slightly different hue from title and table)
 	local barBg = bar:CreateTexture(nil, "BACKGROUND")
 	barBg:SetAllPoints()
-	barBg:SetColorTexture(C.filterBar[1], C.filterBar[2], C.filterBar[3], 1)
+	barBg:SetColorTexture(C.contentBg[1], C.contentBg[2], C.contentBg[3], 1)
 	barBg:SetDrawLayer("BACKGROUND", 2)
 
 	local playerLabel = bar:CreateFontString(nil, "OVERLAY", "MPTFont_Label")
 	playerLabel:SetPoint("LEFT", bar, "LEFT", 10, 0)
 	playerLabel:SetText("Player")
 
-	local playerInput = self:CreateSearchInput(bar, "MPTFilterPlayer", 85)
+	local playerInput = self:CreateSearchInput(bar, "MPTFilterPlayer", 85, true)
 	playerInput:SetPoint("LEFT", playerLabel, "RIGHT", 6, 0)
 	local playerBox = playerInput.editBox
 	playerBox:SetScript("OnEnterPressed", function(self)
@@ -338,7 +580,7 @@ function MPT:CreateFilterBar(parent)
 	realmLabel:SetPoint("LEFT", playerInput, "RIGHT", 12, 0)
 	realmLabel:SetText("Realm")
 
-	local realmInput = self:CreateSearchInput(bar, "MPTFilterRealm", 85)
+	local realmInput = self:CreateSearchInput(bar, "MPTFilterRealm", 85, true)
 	realmInput:SetPoint("LEFT", realmLabel, "RIGHT", 6, 0)
 	local realmBox = realmInput.editBox
 	realmBox:SetScript("OnEnterPressed", function(self)
@@ -346,50 +588,77 @@ function MPT:CreateFilterBar(parent)
 		MPT:ApplyFilters()
 	end)
 
-	local dungeonLabel = bar:CreateFontString(nil, "OVERLAY", "MPTFont_Label")
-	dungeonLabel:SetPoint("LEFT", realmInput, "RIGHT", 12, 0)
-	dungeonLabel:SetText("Dungeon")
-
-	local dungeonInput = self:CreateSearchInput(bar, "MPTFilterDungeon", 85)
-	dungeonInput:SetPoint("LEFT", dungeonLabel, "RIGHT", 6, 0)
-	local dungeonBox = dungeonInput.editBox
-	dungeonBox:SetScript("OnEnterPressed", function(self)
-		self:ClearFocus()
-		MPT:ApplyFilters()
+	local searchBtn = CreateFrame("Button", nil, bar)
+	searchBtn:SetSize(20, 20)
+	searchBtn:SetPoint("LEFT", realmInput, "RIGHT", 8, 0)
+	local searchIcon = searchBtn:CreateTexture(nil, "ARTWORK")
+	searchIcon:SetSize(14, 14)
+	searchIcon:SetPoint("CENTER")
+	searchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+	searchIcon:SetDesaturated(true)
+	searchIcon:SetVertexColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	searchBtn:SetScript("OnEnter", function()
+		searchIcon:SetVertexColor(C.accent[1], C.accent[2], C.accent[3])
 	end)
-
-	local searchBtn = self:CreateModernButton(bar, 55, 20, "Search")
-	searchBtn:SetPoint("LEFT", dungeonInput, "RIGHT", 12, 0)
+	searchBtn:SetScript("OnLeave", function()
+		searchIcon:SetVertexColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	end)
 	searchBtn:SetScript("OnClick", function()
 		MPT:ApplyFilters()
 	end)
 
-	local clearBtn = self:CreateModernButton(bar, 50, 20, "Clear")
-	clearBtn:SetPoint("LEFT", searchBtn, "RIGHT", 4, 0)
-	clearBtn:SetScript("OnClick", function()
-		playerBox:SetText("")
-		dungeonBox:SetText("")
-		realmBox:SetText("")
-		MPT:ApplyFilters()
+	-- Favourites toggle star (flat pictogram, no border/shadow)
+	local favBtn = CreateFrame("Button", nil, bar)
+	favBtn:SetSize(24, 24)
+	favBtn:SetPoint("LEFT", searchBtn, "RIGHT", 8, 0)
+	local favIcon = favBtn:CreateTexture(nil, "ARTWORK")
+	favIcon:SetSize(20, 20)
+	favIcon:SetPoint("CENTER")
+	favIcon:SetAtlas("PetJournal-FavoritesIcon")
+	favIcon:SetDesaturated(true)
+	favIcon:SetVertexColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	self.favToggleIcon = favIcon
+	favBtn:SetScript("OnEnter", function()
+		if not MPT.showFavouritesOnly then
+			favIcon:SetDesaturated(false)
+			favIcon:SetVertexColor(C.accent[1], C.accent[2], C.accent[3])
+		end
+	end)
+	favBtn:SetScript("OnLeave", function()
+		if not MPT.showFavouritesOnly then
+			favIcon:SetDesaturated(true)
+			favIcon:SetVertexColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		end
+	end)
+	favBtn:SetScript("OnClick", function()
+		MPT:ToggleFavouritesFilter()
 	end)
 
-	-- Options button
-	local optionsBtn = self:CreateModernButton(bar, 65, 20, "Options")
-	optionsBtn:SetPoint("LEFT", clearBtn, "RIGHT", 8, 0)
-	optionsBtn:SetScript("OnClick", function()
-		MPT:ToggleOptionsPanel()
+	local filterBtn = self:CreateModernButton(bar, 55, 20, "Filter")
+	filterBtn:SetPoint("LEFT", favBtn, "RIGHT", 8, 0)
+	filterBtn:SetScript("OnClick", function()
+		MPT:ToggleFilterPopup()
 	end)
-	self.optionsBtn = optionsBtn
+	filterBtn:SetScript("OnEnter", function(self)
+		self.bg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 1)
+		self.label:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+	end)
+	filterBtn:SetScript("OnLeave", function(self)
+		if not (MPT.filterPopup and MPT.filterPopup:IsShown()) then
+			self.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+			self.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		end
+	end)
+	self.filterBtn = filterBtn
 
 	self.filterBar = bar
 	self.filterPlayerBox = playerBox
-	self.filterDungeonBox = dungeonBox
 	self.filterRealmBox = realmBox
 end
 
 function MPT:CreateColumnHeaders(parent)
 	local header = CreateFrame("Frame", nil, parent)
-	header:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -2)
+	header:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -30)
 	header:SetPoint("RIGHT", parent, "RIGHT", -14, 0)
 	header:SetHeight(HEADER_HEIGHT)
 
@@ -412,9 +681,13 @@ end
 
 function MPT:CreateScrollFrame(parent, tableWidth)
 	local scrollParent = CreateFrame("Frame", nil, parent)
-	scrollParent:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -2 - HEADER_HEIGHT)
-	scrollParent:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -4, 4)
+	scrollParent:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -30 - HEADER_HEIGHT)
+	scrollParent:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -4, 0)
 	scrollParent:SetClipsChildren(true)
+	-- Fill empty space below rows with the base row color so no contentBg strip shows
+	local scrollBg = scrollParent:CreateTexture(nil, "BACKGROUND")
+	scrollBg:SetAllPoints()
+	scrollBg:SetColorTexture(C.rowBase[1], C.rowBase[2], C.rowBase[3], 1)
 
 	local scrollFrame = CreateFrame("ScrollFrame", "MPTScrollFrame", scrollParent, "FauxScrollFrameTemplate")
 	scrollFrame:SetAllPoints()
@@ -464,7 +737,7 @@ function MPT:CreateScrollFrame(parent, tableWidth)
 		local scrollBar = _G["MPTScrollFrameScrollBar"]
 		if scrollBar then
 			local cur = scrollBar:GetValue()
-			local newVal = cur - (delta * ROW_HEIGHT)
+			local newVal = cur - (delta * (ROW_HEIGHT / 2))
 			scrollBar:SetValue(newVal)
 		end
 	end)
@@ -483,7 +756,7 @@ function MPT:CreateScrollFrame(parent, tableWidth)
 		local thumbH = self:GetHeight()
 		local scrollRatio = math.max(0, math.min(1, (top - cursorY - thumbH / 2) / (trackH - thumbH)))
 		local runs = MPT:GetFilteredRuns()
-		local maxOffset = math.max(0, #runs - VISIBLE_ROWS)
+		local maxOffset = math.max(0, MPT:GetTotalVirtualRows(runs) - VISIBLE_ROWS)
 		local newOffset = math.floor(scrollRatio * maxOffset + 0.5)
 		local scrollBar = _G["MPTScrollFrameScrollBar"]
 		if scrollBar and scrollBar.SetValue then
@@ -492,7 +765,8 @@ function MPT:CreateScrollFrame(parent, tableWidth)
 	end)
 
 	self.rows = {}
-	for i = 1, VISIBLE_ROWS do
+	-- Create one extra row for the expanded row that scrolls off the top
+	for i = 1, VISIBLE_ROWS + 1 do
 		self.rows[i] = self:CreateRow(scrollParent, i)
 	end
 
@@ -512,6 +786,15 @@ function MPT:CreateRow(parent, index)
 	local highlight = row:CreateTexture(nil, "HIGHLIGHT")
 	highlight:SetAllPoints()
 	highlight:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], C.highlight[4])
+
+	-- Favourite accent bar (thin gold left edge)
+	local favBar = row:CreateTexture(nil, "ARTWORK")
+	favBar:SetWidth(3)
+	favBar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+	favBar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+	favBar:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 0.8)
+	favBar:Hide()
+	row.favBar = favBar
 
 	-- Data cells
 	row.cells = {}
@@ -538,9 +821,9 @@ function MPT:CreateRow(parent, index)
 	-- MVP star icon (centered in MVP column)
 	local mvpOff, mvpW = getColOffset("mvp")
 	local mvpStar = row:CreateTexture(nil, "OVERLAY")
-	mvpStar:SetSize(24, 24)
+	mvpStar:SetSize(16, 16)
 	mvpStar:SetPoint("CENTER", row, "LEFT", mvpOff + mvpW / 2, 0)
-	mvpStar:SetTexture("Interface\\COMMON\\FavoritesIcon")
+	mvpStar:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
 	mvpStar:SetVertexColor(1, 0.9, 0)
 	mvpStar:Hide()
 	row.mvpStar = mvpStar
@@ -627,15 +910,14 @@ function MPT:CreateRow(parent, index)
 	descIcon:Hide()
 	row.descIcon = descIcon
 
-	-- Highlight indicator (hidden by default, used for scroll-to highlight)
-	local shimmerTex = row:CreateTexture(nil, "ARTWORK")
-	shimmerTex:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-	shimmerTex:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-	shimmerTex:SetWidth(3)
-	shimmerTex:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 1)
-	shimmerTex:SetAlpha(0)
-	shimmerTex:Hide()
-	row.shimmerTex = shimmerTex
+	-- Underline sweep (hidden by default, used for scroll-to highlight)
+	local sweepLine = row:CreateTexture(nil, "ARTWORK", nil, 4)
+	sweepLine:SetHeight(2)
+	sweepLine:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+	sweepLine:SetWidth(0)
+	sweepLine:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 1)
+	sweepLine:Hide()
+	row.shimmerTex = sweepLine
 
 	-- Mouse wheel passthrough to scroll the table
 	row:EnableMouseWheel(true)
@@ -643,13 +925,17 @@ function MPT:CreateRow(parent, index)
 		local scrollBar = _G["MPTScrollFrameScrollBar"]
 		if scrollBar then
 			local cur = scrollBar:GetValue()
-			scrollBar:SetValue(cur - (delta * ROW_HEIGHT))
+			scrollBar:SetValue(cur - (delta * (ROW_HEIGHT / 2)))
 		end
 	end)
 
-	-- Row click expands/collapses tree view
-	row:SetScript("OnClick", function()
-		if row.runData then
+	-- Row click: left = expand/collapse, right = context menu
+	row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	row:SetScript("OnClick", function(self, button)
+		if not row.runData then return end
+		if button == "RightButton" then
+			MPT:ShowRowContextMenu(row)
+		else
 			MPT:ToggleRowExpansion(row)
 		end
 	end)
@@ -660,9 +946,15 @@ end
 function MPT:ApplyFilters()
 	self.currentFilters = {
 		player = self.filterPlayerBox and self.filterPlayerBox:GetText() or "",
-		dungeon = self.filterDungeonBox and self.filterDungeonBox:GetText() or "",
 		realm = self.filterRealmBox and self.filterRealmBox:GetText() or "",
+		favouritesOnly = self.showFavouritesOnly or false,
 	}
+	-- Merge advanced filters from filter popup
+	if self.advancedFilters then
+		for k, v in pairs(self.advancedFilters) do
+			self.currentFilters[k] = v
+		end
+	end
 	self:RefreshTable()
 end
 
@@ -676,7 +968,7 @@ function MPT:UpdateMainScrollThumb()
 	if not thumb or not track then return end
 
 	local runs = self:GetFilteredRuns()
-	local totalRows = #runs
+	local totalRows = self:GetTotalVirtualRows(runs)
 	if totalRows <= VISIBLE_ROWS then
 		thumb:Hide()
 		return
@@ -695,17 +987,90 @@ function MPT:UpdateMainScrollThumb()
 	thumb:SetPoint("TOP", track, "TOP", 0, -scrollRatio * (trackH - thumbH))
 end
 
+function MPT:GetExpandedDetailHeight(runs)
+	if not self.expandedRunId then return 0 end
+	for _, run in ipairs(runs) do
+		if run.id == self.expandedRunId then
+			local members = run.members or {}
+			-- Mirror RowDetail.lua constants: DETAIL_PADDING=10, DETAIL_HEADER_HEIGHT=26,
+			-- DETAIL_GAP=3, DETAIL_ROW_HEIGHT=28, ACTION_BAR_HEIGHT=32
+			return 10 + 26 + 3 + (#members * (28 + 3)) + 1 + 32 + 10
+		end
+	end
+	return 0
+end
+
+function MPT:GetTotalVirtualRows(runs)
+	local total = #runs
+	-- Always add bottom padding so there's room to view tree details
+	-- on any row, even the last one
+	local maxMembers = 5  -- typical M+ group size
+	local defaultDetailHeight = 10 + 26 + 3 + (maxMembers * (28 + 3)) + 1 + 32 + 10
+	local extraRows = math.ceil(defaultDetailHeight / ROW_HEIGHT)
+	-- If a row is actually expanded, use its real height if larger
+	local detailHeight = self:GetExpandedDetailHeight(runs)
+	if detailHeight > 0 then
+		local expandedExtra = math.ceil(detailHeight / ROW_HEIGHT)
+		if expandedExtra > extraRows then
+			extraRows = expandedExtra
+		end
+	end
+	return total + extraRows
+end
+
 function MPT:RefreshTable()
 	if not self.scrollFrame then return end
 
 	local runs = self:GetFilteredRuns()
 	local offset = FauxScrollFrame_GetOffset(self.scrollFrame)
 
-	FauxScrollFrame_Update(self.scrollFrame, #runs, VISIBLE_ROWS, ROW_HEIGHT)
+	local totalVirtualRows = self:GetTotalVirtualRows(runs)
+	FauxScrollFrame_Update(self.scrollFrame, totalVirtualRows, VISIBLE_ROWS, ROW_HEIGHT)
 	self:UpdateMainScrollThumb()
 
 	local yOffset = 0
 	local maxY = VISIBLE_ROWS * ROW_HEIGHT
+	-- When the expanded row scrolls above the visible range, keep rendering it
+	-- above the clip boundary so its detail frame scrolls out gradually.
+	local peekRow = self.rows[VISIBLE_ROWS + 1]
+	local peekUsed = false
+	if self.expandedRunId and offset > 0 then
+		local expandedIdx = nil
+		for idx, run in ipairs(runs) do
+			if run.id == self.expandedRunId then
+				expandedIdx = idx
+				break
+			end
+		end
+		if expandedIdx and expandedIdx <= offset then
+			local detailHeight = self:GetExpandedDetailHeight(runs)
+			-- Row is (offset - expandedIdx + 1) rows above the visible top
+			local rowsAbove = offset - expandedIdx + 1
+			-- The detail starts ROW_HEIGHT below the row's top, so its top
+			-- relative to scrollParent top is: -(rowsAbove * ROW_HEIGHT) + ROW_HEIGHT = -((rowsAbove - 1) * ROW_HEIGHT)
+			-- The visible portion of detail = detailHeight - (rowsAbove - 1) * ROW_HEIGHT
+			local detailVisible = detailHeight - (rowsAbove - 1) * ROW_HEIGHT
+			if detailVisible > 0 then
+				peekUsed = true
+				peekRow.runData = runs[expandedIdx]
+				-- Position row above the visible area; clipping hides it
+				local rowTop = rowsAbove * ROW_HEIGHT
+				peekRow:ClearAllPoints()
+				peekRow:SetPoint("TOPLEFT", self.scrollParent, "TOPLEFT", 0, rowTop)
+				peekRow:SetPoint("RIGHT", self.scrollParent, "RIGHT", -10, 0)
+				peekRow:Show()
+				self:ExpandRow(peekRow)
+				-- Detail frame uses default anchoring (BOTTOMLEFT of row),
+				-- so it will be partially visible through the clip region
+				yOffset = detailVisible
+			end
+		end
+	end
+	if not peekUsed then
+		peekRow.runData = nil
+		peekRow:Hide()
+		if peekRow.detailFrame then peekRow.detailFrame:Hide() end
+	end
 
 	for i = 1, VISIBLE_ROWS do
 		local row = self.rows[i]
@@ -755,18 +1120,37 @@ end
 function MPT:ShimmerRow(row)
 	local tex = row.shimmerTex
 	if not tex then return end
-	tex:Show()
+
+	local rowWidth = row:GetWidth()
+	if rowWidth <= 0 then rowWidth = 800 end
+
+	tex:SetWidth(0)
 	tex:SetAlpha(1)
-	-- Fade out smoothly over 1.5 seconds in many small steps
-	local duration = 1.5
-	local steps = 30
-	local interval = duration / steps
-	for i = 1, steps do
-		C_Timer.After(i * interval, function()
-			local alpha = 1 - (i / steps)
+	tex:Show()
+
+	-- Phase 1: sweep across (0.4s)
+	local sweepDuration = 0.4
+	local sweepSteps = 20
+	local sweepInterval = sweepDuration / sweepSteps
+	for i = 1, sweepSteps do
+		C_Timer.After(i * sweepInterval, function()
+			local progress = i / sweepSteps
+			tex:SetWidth(rowWidth * progress)
+		end)
+	end
+
+	-- Phase 2: hold briefly then fade out (0.8s)
+	local fadeStart = sweepDuration + 0.3
+	local fadeDuration = 0.8
+	local fadeSteps = 16
+	local fadeInterval = fadeDuration / fadeSteps
+	for i = 1, fadeSteps do
+		C_Timer.After(fadeStart + i * fadeInterval, function()
+			local alpha = 1 - (i / fadeSteps)
 			tex:SetAlpha(alpha)
-			if i == steps then
+			if i == fadeSteps then
 				tex:Hide()
+				tex:SetWidth(0)
 			end
 		end)
 	end
@@ -895,11 +1279,11 @@ function MPT:PopulateRow(row, run)
 		end)
 	end
 
-	-- Role column class color (column 7)
-	if playerMember then
-		local r, g, b = self:GetClassColor(playerMember.class)
-		row.cells[7]:SetTextColor(r, g, b)
-	end
+	-- Role column — white text
+	row.cells[7]:SetTextColor(1, 1, 1)
+
+	-- Level column — green
+	row.cells[3]:SetTextColor(0.2, 0.8, 0.2)
 
 	-- Bonus text color from heatmap
 	local hr, hg, hb = self:GetBonusColor(run.bonus, run.onTime)
@@ -918,6 +1302,15 @@ function MPT:PopulateRow(row, run)
 	else
 		row.linkIcon:Hide()
 	end
+
+	-- Favourite accent bar
+	if row.favBar then
+		if self:IsFavourite(run.id) then
+			row.favBar:Show()
+		else
+			row.favBar:Hide()
+		end
+	end
 end
 
 -- ── MVPs side panel ──────────────────────────────────────
@@ -928,24 +1321,25 @@ local MVP_BUBBLE_SPACING = 3
 function MPT:CreateMvpsSidePanel(parent, padding, tableCard)
 	local panel = CreateFrame("Frame", nil, parent)
 	panel:SetWidth(MVP_PANEL_WIDTH)
-	-- Flush with table card
-	panel:SetPoint("TOPLEFT", tableCard, "TOPRIGHT", 0, 0)
-	panel:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
+	-- Left side, part of dark shell
+	panel:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -4)
+	panel:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 0)
 
-	-- Panel background
+	-- Panel background (matches dark shell)
 	local bg = panel:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(C.panelBg[1], C.panelBg[2], C.panelBg[3], 1)
+	bg:SetColorTexture(C.bg[1], C.bg[2], C.bg[3], 1)
 	bg:SetDrawLayer("BACKGROUND", 2)
 
-	-- Header bar (matches table column header style)
+	-- Header bar (blends with dark shell)
+	local SCROLL_BAR_WIDTH = 4
 	local header = CreateFrame("Frame", nil, panel)
-	header:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
-	header:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, 0)
+	header:SetPoint("TOPLEFT", panel, "TOPLEFT", 6, -4)
+	header:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -6 - SCROLL_BAR_WIDTH - 2, -4)
 	header:SetHeight(HEADER_HEIGHT)
 	local headerBg = header:CreateTexture(nil, "BACKGROUND", nil, 3)
 	headerBg:SetAllPoints()
-	headerBg:SetColorTexture(C.headerBg[1], C.headerBg[2], C.headerBg[3], 1)
+	headerBg:SetColorTexture(C.bg[1], C.bg[2], C.bg[3], 1)
 
 	local title = header:CreateFontString(nil, "OVERLAY", "MPTFont_Header")
 	title:SetPoint("LEFT", header, "LEFT", 10, 0)
@@ -962,10 +1356,8 @@ function MPT:CreateMvpsSidePanel(parent, padding, tableCard)
 	panel.importBtn = importBtn
 	self.mvpImportBtn = importBtn
 
-	local SCROLL_BAR_WIDTH = 4
-
 	local scrollParent = CreateFrame("Frame", nil, panel)
-	scrollParent:SetPoint("TOPLEFT", panel, "TOPLEFT", 6, -(HEADER_HEIGHT + 4))
+	scrollParent:SetPoint("TOPLEFT", panel, "TOPLEFT", 6, -(HEADER_HEIGHT + 8))
 	scrollParent:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -6 - SCROLL_BAR_WIDTH - 2, 6)
 	scrollParent:SetClipsChildren(true)
 	panel.scrollParent = scrollParent
@@ -1168,7 +1560,7 @@ function MPT:RefreshMvpsSidePanel()
 		bubble:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 		bubble:SetScript("OnClick", function(self, button)
 			if button == "RightButton" and not isViewing then
-				MPT:ShowNotePopup(nameRealm, self)
+				MPT:ShowNotePopup(nameRealm, self, class)
 			else
 				MPT:ScrollToPlayerRun(nameRealm)
 			end
@@ -1328,8 +1720,325 @@ function MPT:ToggleHelpPanel()
 	end
 	if self.helpPanel:IsShown() then
 		self.helpPanel:Hide()
+		if self.helpLabel then
+			self.helpLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		end
 	else
 		self.helpPanel:Show()
+		if self.helpLabel then
+			self.helpLabel:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+		end
+	end
+end
+
+-- ── Row context menu ────────────────────────────────────────────
+
+function MPT:ShowRowContextMenu(row)
+	if not row.runData then return end
+	if self.rowContextMenu then self.rowContextMenu:Hide() end
+
+	local menu = CreateFrame("Frame", nil, self.mainFrame)
+	menu:SetSize(130, 28)
+	menu:SetFrameStrata("TOOLTIP")
+
+	local bg = menu:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+	local isFav = self:IsFavourite(row.runData.id)
+	local label = isFav and "Unfavourite" or "Favourite"
+
+	local btn = CreateFrame("Button", nil, menu)
+	btn:SetAllPoints()
+	local btnText = btn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+	btnText:SetPoint("LEFT", 10, 0)
+	btnText:SetText(label)
+	btnText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+
+	local btnBg = btn:CreateTexture(nil, "BACKGROUND")
+	btnBg:SetAllPoints()
+	btnBg:SetColorTexture(0, 0, 0, 0)
+	btn:SetScript("OnEnter", function()
+		btnBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
+	end)
+	btn:SetScript("OnLeave", function()
+		btnBg:SetColorTexture(0, 0, 0, 0)
+	end)
+	btn:SetScript("OnClick", function()
+		MPT:ToggleFavourite(row.runData.id)
+		MPT:RefreshTable()
+		menu:Hide()
+	end)
+
+	-- Position at cursor
+	local scale = UIParent:GetEffectiveScale()
+	local x, y = GetCursorPosition()
+	menu:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+	menu:Show()
+
+	self.rowContextMenu = menu
+
+	-- Close on next click anywhere else
+	menu:SetScript("OnUpdate", function(self)
+		if not self:IsMouseOver() and IsMouseButtonDown("LeftButton") then
+			self:Hide()
+		end
+	end)
+end
+
+-- ── Favourites toggle ───────────────────────────────────────────
+
+function MPT:ToggleFavouritesFilter()
+	self.showFavouritesOnly = not self.showFavouritesOnly
+	if self.showFavouritesOnly then
+		self.favToggleIcon:SetDesaturated(false)
+		self.favToggleIcon:SetVertexColor(C.accent[1], C.accent[2], C.accent[3])
+	else
+		self.favToggleIcon:SetDesaturated(true)
+		self.favToggleIcon:SetVertexColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	end
+	self:ApplyFilters()
+end
+
+-- ── Filter popup ────────────────────────────────────────────────
+
+function MPT:CreateFilterPopup()
+	if self.filterPopup then return end
+
+	local POPUP_WIDTH = 280
+	local DROPDOWN_WIDTH = 170
+	local panel = CreateFrame("Frame", "MPTFilterPopup", self.mainFrame)
+	panel:SetWidth(POPUP_WIDTH)
+	panel:SetPoint("TOPLEFT", self.filterBtn, "BOTTOMLEFT", 0, -4)
+	panel:SetFrameStrata("DIALOG")
+
+	local bg = panel:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+	local yOff = -12
+
+	-- Helper: add a label + dropdown row
+	local function addDropdownRow(labelText)
+		local lbl = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Label")
+		lbl:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+		lbl:SetText(labelText)
+		lbl:SetWidth(70)
+		lbl:SetJustifyH("LEFT")
+
+		local dd = MPT:CreateDropdown(panel, DROPDOWN_WIDTH, "All")
+		dd:SetPoint("LEFT", lbl, "RIGHT", 8, 0)
+		yOff = yOff - 28
+		return dd
+	end
+
+	-- Player input
+	local playerLbl = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Label")
+	playerLbl:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+	playerLbl:SetText("Player")
+	playerLbl:SetWidth(70)
+	playerLbl:SetJustifyH("LEFT")
+	local playerInput = self:CreateSearchInput(panel, "MPTFilterPopupPlayer", DROPDOWN_WIDTH, true)
+	playerInput:SetPoint("LEFT", playerLbl, "RIGHT", 8, 0)
+	panel.playerBox = playerInput.editBox
+	yOff = yOff - 28
+
+	-- Realm input
+	local realmLbl = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Label")
+	realmLbl:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+	realmLbl:SetText("Realm")
+	realmLbl:SetWidth(70)
+	realmLbl:SetJustifyH("LEFT")
+	local realmInput = self:CreateSearchInput(panel, "MPTFilterPopupRealm", DROPDOWN_WIDTH, true)
+	realmInput:SetPoint("LEFT", realmLbl, "RIGHT", 8, 0)
+	panel.realmBox = realmInput.editBox
+	yOff = yOff - 22
+
+	-- Divider
+	local div1 = panel:CreateTexture(nil, "ARTWORK")
+	div1:SetHeight(1)
+	div1:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+	div1:SetPoint("RIGHT", panel, "RIGHT", -12, 0)
+	div1:SetColorTexture(C.divider[1], C.divider[2], C.divider[3], 1)
+	yOff = yOff - 12
+
+	-- Dungeon dropdown
+	panel.dungeonDD = addDropdownRow("Dungeon")
+
+	-- Dungeon search (for old dungeons not in dropdown)
+	local dungSearchLbl = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+	dungSearchLbl:SetPoint("TOPLEFT", panel, "TOPLEFT", 90, yOff + 4)
+	dungSearchLbl:SetText("or search:")
+	local dungSearchInput = self:CreateSearchInput(panel, "MPTFilterDungeonSearch", DROPDOWN_WIDTH - 60)
+	dungSearchInput:SetPoint("LEFT", dungSearchLbl, "RIGHT", 4, 0)
+	panel.dungeonSearchBox = dungSearchInput.editBox
+	yOff = yOff - 26
+
+	-- Level range
+	local levelLbl = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Label")
+	levelLbl:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+	levelLbl:SetText("Level")
+	levelLbl:SetWidth(70)
+	levelLbl:SetJustifyH("LEFT")
+
+	local minLbl = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+	minLbl:SetPoint("LEFT", levelLbl, "RIGHT", 8, 0)
+	minLbl:SetText("Min")
+	local minInput = self:CreateSearchInput(panel, "MPTFilterLevelMin", 40)
+	minInput:SetPoint("LEFT", minLbl, "RIGHT", 4, 0)
+	panel.levelMinBox = minInput.editBox
+	minInput.editBox:SetNumeric(true)
+
+	local maxLbl = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+	maxLbl:SetPoint("LEFT", minInput, "RIGHT", 8, 0)
+	maxLbl:SetText("Max")
+	local maxInput = self:CreateSearchInput(panel, "MPTFilterLevelMax", 40)
+	maxInput:SetPoint("LEFT", maxLbl, "RIGHT", 4, 0)
+	panel.levelMaxBox = maxInput.editBox
+	maxInput.editBox:SetNumeric(true)
+	yOff = yOff - 28
+
+	-- Affix dropdown
+	panel.affixDD = addDropdownRow("Affix")
+
+	-- Bonus dropdown
+	panel.bonusDD = addDropdownRow("Bonus")
+	panel.bonusDD:SetItems({
+		{ value = "3", display = "+3" },
+		{ value = "2", display = "+2" },
+		{ value = "1", display = "+1" },
+		{ value = "depleted", display = "Depleted" },
+	})
+
+	-- Role dropdown
+	panel.roleDD = addDropdownRow("Role")
+	panel.roleDD:SetItems({
+		{ value = "TANK", display = "Tank" },
+		{ value = "HEALER", display = "Healer" },
+		{ value = "DAMAGER", display = "DPS" },
+	})
+
+	-- Divider
+	local div2 = panel:CreateTexture(nil, "ARTWORK")
+	div2:SetHeight(1)
+	div2:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+	div2:SetPoint("RIGHT", panel, "RIGHT", -12, 0)
+	div2:SetColorTexture(C.divider[1], C.divider[2], C.divider[3], 1)
+	yOff = yOff - 10
+
+	-- Checkboxes: Has Description, Has Link
+	local hasDescCheck = self:CreateModernCheckbox(panel, "Has Description")
+	hasDescCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+	panel.hasDescCheck = hasDescCheck
+	yOff = yOff - 24
+
+	local hasLinkCheck = self:CreateModernCheckbox(panel, "Has Link")
+	hasLinkCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+	panel.hasLinkCheck = hasLinkCheck
+	yOff = yOff - 32
+
+	-- Buttons: Apply + Clear
+	local applyBtn = self:CreateModernButton(panel, 80, 22, "Apply")
+	applyBtn:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -90, 10)
+	applyBtn:SetScript("OnClick", function()
+		MPT:ApplyFilterPopup()
+	end)
+
+	local clearFilterBtn = self:CreateModernButton(panel, 80, 22, "Clear")
+	clearFilterBtn:SetPoint("LEFT", applyBtn, "RIGHT", 4, 0)
+	clearFilterBtn:SetScript("OnClick", function()
+		MPT:ResetFilterPopup()
+		MPT.advancedFilters = nil
+		MPT:ApplyFilters()
+		MPT.filterPopup:Hide()
+	end)
+
+	panel:SetHeight(math.abs(yOff) + 16)
+	panel:Hide()
+	self.filterPopup = panel
+end
+
+function MPT:ResetFilterPopup()
+	local p = self.filterPopup
+	if not p then return end
+	p.dungeonDD:SetValue("")
+	p.dungeonSearchBox:SetText("")
+	p.affixDD:SetValue("")
+	p.bonusDD:SetValue("")
+	p.roleDD:SetValue("")
+	p.levelMinBox:SetText("")
+	p.levelMaxBox:SetText("")
+	p.hasDescCheck:SetChecked(false)
+	p.hasLinkCheck:SetChecked(false)
+	p.playerBox:SetText("")
+	p.realmBox:SetText("")
+end
+
+function MPT:PopulateFilterDropdowns()
+	local dungeons, affixes = self:CollectFilterValues()
+	if self.filterPopup then
+		self.filterPopup.dungeonDD:SetItems(dungeons)
+		self.filterPopup.affixDD:SetItems(affixes)
+	end
+end
+
+function MPT:ApplyFilterPopup()
+	local p = self.filterPopup
+	if not p then return end
+
+	-- Dungeon: dropdown takes priority, fallback to search box
+	local dungeonVal = p.dungeonDD:GetValue()
+	if dungeonVal == "" then
+		dungeonVal = p.dungeonSearchBox:GetText()
+	end
+
+	self.advancedFilters = {
+		dungeon = dungeonVal,
+		affix = p.affixDD:GetValue(),
+		bonus = p.bonusDD:GetValue(),
+		role = p.roleDD:GetValue(),
+		levelMin = p.levelMinBox:GetText(),
+		levelMax = p.levelMaxBox:GetText(),
+		hasDesc = p.hasDescCheck:GetChecked(),
+		hasLink = p.hasLinkCheck:GetChecked(),
+	}
+
+	-- Sync player/realm from popup to filter bar
+	local popupPlayer = p.playerBox:GetText()
+	local popupRealm = p.realmBox:GetText()
+	if popupPlayer ~= "" and self.filterPlayerBox then
+		self.filterPlayerBox:SetText(popupPlayer)
+	end
+	if popupRealm ~= "" and self.filterRealmBox then
+		self.filterRealmBox:SetText(popupRealm)
+	end
+
+	self:ApplyFilters()
+	self.filterPopup:Hide()
+end
+
+function MPT:ResetFilterBtnStyle()
+	if self.filterBtn then
+		self.filterBtn.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+		self.filterBtn.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+	end
+end
+
+function MPT:ToggleFilterPopup()
+	if not self.filterPopup then
+		self:CreateFilterPopup()
+	end
+
+	if self.filterPopup:IsShown() then
+		self.filterPopup:Hide()
+		self:ResetFilterBtnStyle()
+	else
+		self:PopulateFilterDropdowns()
+		self.filterPopup:Show()
+		if self.filterBtn then
+			self.filterBtn.bg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 1)
+			self.filterBtn.label:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+		end
 	end
 end
 

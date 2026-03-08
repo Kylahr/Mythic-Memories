@@ -379,6 +379,27 @@ function MPT:HookUnitMenus()
 			rootDescription:CreateButton("View M+ Table", function()
 				MPT:RequestTable(name, server)
 			end)
+
+			local nameRealm = name .. "-" .. server
+			local _, class = UnitClass(name)
+
+			if MPT:IsMvp(nameRealm) then
+				rootDescription:CreateButton("Remove from MVP List", function()
+					local note = MPT:GetMvpNote(nameRealm)
+					if note and note ~= "" then
+						MPT:ShowRemoveMvpConfirm(nameRealm, class)
+					else
+						MPT:RemoveMvp(nameRealm)
+						MPT:OnMvpChanged()
+					end
+				end)
+			else
+				rootDescription:CreateButton("Add to MVP List", function()
+					MPT:AddMvp(nameRealm, myName, class)
+					MPT:OnMvpChanged()
+					MPT:ShowAddNoteDialog(nameRealm, class)
+				end)
+			end
 		end)
 	end
 end

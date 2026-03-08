@@ -20,7 +20,21 @@ function MPT:HideAllPopups()
 	if self.resetDialog then self.resetDialog:Hide() end
 	if self.notePopup then self.notePopup:Hide() end
 	if self.removeMvpDialog then self.removeMvpDialog:Hide() end
-	if self.helpPanel then self.helpPanel:Hide() end
+	if self.helpPanel then
+		self.helpPanel:Hide()
+		if self.helpLabel then
+			self.helpLabel:SetTextColor(0.55, 0.53, 0.47)
+		end
+	end
+	if self.addNoteDialog then self.addNoteDialog:Hide() end
+	if self.filterPopup then
+		self.filterPopup:Hide()
+		if self.filterBtn then
+			self.filterBtn.bg:SetColorTexture(0.25, 0.24, 0.20, 1)
+			self.filterBtn.label:SetTextColor(0.92, 0.90, 0.84)
+		end
+	end
+	if self.rowContextMenu then self.rowContextMenu:Hide() end
 end
 
 -- ── Shared scrollable multi-line edit area ────────────────────
@@ -477,7 +491,16 @@ end
 
 -- ── MVP Note popup ───────────────────────────────────────────
 
-function MPT:ShowNotePopup(nameRealm, anchorFrame)
+function MPT:ClassColoredName(nameRealm, class)
+	if class then
+		local r, g, b = self:GetClassColor(class)
+		local hex = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+		return "|cFF" .. hex .. nameRealm .. "|r"
+	end
+	return nameRealm
+end
+
+function MPT:ShowNotePopup(nameRealm, anchorFrame, class)
 	if self.notePopup and self.notePopup:IsShown() and self.notePopup.nameRealm == nameRealm then
 		self:HideAllPopups()
 		return
@@ -490,7 +513,7 @@ function MPT:ShowNotePopup(nameRealm, anchorFrame)
 
 	local popup = self.notePopup
 	popup.nameRealm = nameRealm
-	popup.title:SetText("Note: " .. nameRealm)
+	popup.title:SetText("Note: " .. self:ClassColoredName(nameRealm, class))
 
 	local note = self:GetMvpNote(nameRealm) or ""
 	popup.noteBox:SetText(note)
@@ -573,7 +596,7 @@ end
 
 -- ── Remove MVP confirmation (when note exists) ──────────────
 
-function MPT:ShowRemoveMvpConfirm(nameRealm)
+function MPT:ShowRemoveMvpConfirm(nameRealm, class)
 	self:HideAllPopups()
 
 	if not self.removeMvpDialog then
@@ -583,7 +606,8 @@ function MPT:ShowRemoveMvpConfirm(nameRealm)
 	local dialog = self.removeMvpDialog
 	dialog.nameRealm = nameRealm
 	local note = self:GetMvpNote(nameRealm) or ""
-	dialog.text:SetText("Remove " .. nameRealm .. " from MVPs?\nThis will delete their note:\n\"" .. note .. "\"")
+	local colored = self:ClassColoredName(nameRealm, class)
+	dialog.text:SetText("Remove " .. colored .. " from MVPs?\nThis will delete their note:\n\"" .. note .. "\"")
 	dialog:Show()
 end
 
@@ -629,4 +653,55 @@ function MPT:CreateRemoveMvpDialog()
 
 	dialog:Hide()
 	self.removeMvpDialog = dialog
+end
+
+-- ── "Add note?" dialog (world view right-click MVP add) ──────
+
+function MPT:ShowAddNoteDialog(nameRealm, class)
+	self:HideAllPopups()
+
+	if not self.addNoteDialog then
+		self:CreateAddNoteDialog()
+	end
+
+	local dialog = self.addNoteDialog
+	dialog.nameRealm = nameRealm
+	dialog.class = class
+	local colored = self:ClassColoredName(nameRealm, class)
+	dialog.text:SetText("Add note for " .. colored .. "?")
+	dialog:Show()
+end
+
+function MPT:CreateAddNoteDialog()
+	local dialog = CreateFrame("Frame", "MPTAddNoteDialog", UIParent)
+	dialog:SetSize(320, 100)
+	dialog:SetPoint("CENTER", UIParent, "CENTER")
+	dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+	dialog:EnableMouse(true)
+
+	local bg = dialog:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(0.13, 0.13, 0.10, 1)
+
+	local text = dialog:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	text:SetPoint("TOP", dialog, "TOP", 0, -20)
+	text:SetWidth(290)
+	text:SetJustifyH("CENTER")
+	dialog.text = text
+
+	local yesBtn = self:CreateModernButton(dialog, 80, 26, "Yes")
+	yesBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -8, 14)
+	yesBtn:SetScript("OnClick", function()
+		dialog:Hide()
+		MPT:ShowNotePopup(dialog.nameRealm, nil, dialog.class)
+	end)
+
+	local noBtn = self:CreateModernButton(dialog, 80, 26, "No")
+	noBtn:SetPoint("BOTTOMLEFT", dialog, "BOTTOM", 8, 14)
+	noBtn:SetScript("OnClick", function()
+		dialog:Hide()
+	end)
+
+	dialog:Hide()
+	self.addNoteDialog = dialog
 end

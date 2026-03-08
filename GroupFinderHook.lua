@@ -89,8 +89,8 @@ function MPT:ApplyMvpStar(memberFrame)
 	if not memberFrame.Name then return end
 	if not memberFrame.mptStar then
 		local star = memberFrame:CreateTexture(nil, "OVERLAY", nil, 7)
-		star:SetSize(18, 18)
-		star:SetAtlas("PetJournal-FavoritesIcon")
+		star:SetSize(14, 14)
+		star:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
 		star:SetVertexColor(1, 0.9, 0)
 		memberFrame.mptStar = star
 	end

@@ -5,6 +5,7 @@ MPT.DB_DEFAULTS = {
 		minimap = { hide = false },
 		runs = {},
 		mvps = {},
+		favourites = {},
 		shareTable = true,
 	},
 }
@@ -35,6 +36,7 @@ function MPT:GetRuns(filterOpts)
 	for _, run in ipairs(sourceRuns) do
 		local match = true
 
+		-- Dungeon: exact match from dropdown or substring from search
 		if filterOpts.dungeon and filterOpts.dungeon ~= "" then
 			if not run.dungeon:lower():find(filterOpts.dungeon:lower(), 1, true) then
 				match = false
@@ -65,11 +67,120 @@ function MPT:GetRuns(filterOpts)
 			if not found then match = false end
 		end
 
+		-- Affix: contains match (run.affix is comma-separated)
+		if match and filterOpts.affix and filterOpts.affix ~= "" then
+			if not run.affix or not run.affix:lower():find(filterOpts.affix:lower(), 1, true) then
+				match = false
+			end
+		end
+
+		-- Bonus: exact match on bonus value or depleted
+		if match and filterOpts.bonus and filterOpts.bonus ~= "" then
+			if filterOpts.bonus == "depleted" then
+				if run.onTime ~= false or run.bonus ~= 0 then
+					match = false
+				end
+			else
+				local bonusNum = tonumber(filterOpts.bonus)
+				if bonusNum then
+					if run.bonus ~= bonusNum or not run.onTime then
+						match = false
+					end
+				end
+			end
+		end
+
+		-- Role: match player's role in the run
+		if match and filterOpts.role and filterOpts.role ~= "" then
+			local playerName = UnitName and UnitName("player") or ""
+			local lookupName = playerName
+			if self.viewingPlayer then
+				lookupName = self.viewingPlayer:match("^([^%-]+)") or self.viewingPlayer
+			end
+			local foundRole = false
+			for _, m in ipairs(run.members or {}) do
+				local shortName = m.name:match("^([^%-]+)") or m.name
+				if shortName == lookupName then
+					if m.role == filterOpts.role then
+						foundRole = true
+					end
+					break
+				end
+			end
+			if not foundRole then match = false end
+		end
+
+		-- Level: min/max range
+		if match and filterOpts.levelMin and filterOpts.levelMin ~= "" then
+			local minLvl = tonumber(filterOpts.levelMin)
+			if minLvl and (run.level or 0) < minLvl then
+				match = false
+			end
+		end
+		if match and filterOpts.levelMax and filterOpts.levelMax ~= "" then
+			local maxLvl = tonumber(filterOpts.levelMax)
+			if maxLvl and (run.level or 0) > maxLvl then
+				match = false
+			end
+		end
+
+		-- Has description
+		if match and filterOpts.hasDesc then
+			if not run.description or run.description == "" then
+				match = false
+			end
+		end
+
+		-- Has link
+		if match and filterOpts.hasLink then
+			if not run.link or run.link == "" then
+				match = false
+			end
+		end
+
+		-- Favourites only
+		if match and filterOpts.favouritesOnly then
+			if not self:IsFavourite(run.id) then
+				match = false
+			end
+		end
+
 		if match then
 			table.insert(results, run)
 		end
 	end
 	return results
+end
+
+-- Collect unique values from saved runs for filter dropdowns
+function MPT:CollectFilterValues()
+	local sourceRuns = self.viewingData and self.viewingData.runs or self.db.global.runs
+	local dungeons = {}
+	local affixes = {}
+	local dungeonSet = {}
+	local affixSet = {}
+
+	for _, run in ipairs(sourceRuns) do
+		-- Unique dungeons
+		if run.dungeon and run.dungeon ~= "" and not dungeonSet[run.dungeon] then
+			dungeonSet[run.dungeon] = true
+			dungeons[#dungeons + 1] = run.dungeon
+		end
+		-- Unique individual affixes (split comma-separated)
+		if run.affix and run.affix ~= "" then
+			for affix in run.affix:gmatch("[^,]+") do
+				affix = affix:match("^%s*(.-)%s*$")  -- trim whitespace
+				if affix ~= "" and not affixSet[affix] then
+					affixSet[affix] = true
+					affixes[#affixes + 1] = affix
+				end
+			end
+		end
+	end
+
+	table.sort(dungeons)
+	table.sort(affixes)
+	return dungeons, affixes
 end
 
 function MPT:UpdateRunField(id, field, value)
@@ -142,6 +253,23 @@ function MPT:IsViewMvp(nameRealm)
 	return self:IsMvp(nameRealm)
 end
 
+function MPT:ToggleFavourite(runId)
+	if not self.db.global.favourites then
+		self.db.global.favourites = {}
+	end
+	if self.db.global.favourites[runId] then
+		self.db.global.favourites[runId] = nil
+		return false
+	else
+		self.db.global.favourites[runId] = true
+		return true
+	end
+end
+
+function MPT:IsFavourite(runId)
+	return self.db.global.favourites and self.db.global.favourites[runId] or false
+end
+
 function MPT:FormatTime(ms)
 	local totalSeconds = math.floor(ms / 1000)
 	local hours = math.floor(totalSeconds / 3600)
@@ -155,7 +283,7 @@ end
 
 function MPT:GetBonusColor(bonus, onTime)
 	if not onTime and bonus == 0 then
-		return 0.8, 0, 0
+		return 1.0, 0.3, 0.3
 	end
 	if bonus >= 3 then
 		return 0, 0.8, 0

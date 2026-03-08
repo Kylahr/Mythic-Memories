@@ -67,15 +67,34 @@ end
 function MPT:ToggleRowExpansion(row)
 	if not row or not row.runData then return end
 
-	if self.expandedRunId == row.runData.id then
+	local scrollBar = _G["MPTScrollFrameScrollBar"]
+	local wasExpanded = self.expandedRunId == row.runData.id
+
+	if wasExpanded then
+		-- Collapsing
 		self.expandedRunId = nil
 		self:HideAllPopups()
+		self:RefreshTable()
+		-- Clamp scroll to new (smaller) range so no empty space at bottom
+		if scrollBar then
+			local _, maxVal = scrollBar:GetMinMaxValues()
+			local cur = scrollBar:GetValue()
+			if cur > maxVal then
+				scrollBar:SetValue(maxVal)
+			end
+		end
 	else
+		-- Expanding: save scroll position, expand, restore, then show detail
+		local savedVal = scrollBar and scrollBar:GetValue() or 0
 		self.expandedRunId = row.runData.id
 		self:HideAllPopups()
+		self:RefreshTable()
+		-- Restore scroll position so the view doesn't jump
+		if scrollBar then
+			scrollBar:SetValue(savedVal)
+			self:RefreshTable()
+		end
 	end
-
-	self:RefreshTable()
 end
 
 function MPT:ExpandRow(row)
@@ -249,9 +268,9 @@ function MPT:ExpandRow(row)
 			nameBtn:SetHeight(DETAIL_ROW_HEIGHT)
 
 			nameBtn.star = nameBtn:CreateTexture(nil, "OVERLAY")
-			nameBtn.star:SetSize(24, 24)
+			nameBtn.star:SetSize(16, 16)
 			nameBtn.star:SetPoint("LEFT", nameBtn, "LEFT", 2, 0)
-			nameBtn.star:SetTexture("Interface\\COMMON\\FavoritesIcon")
+			nameBtn.star:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
 			nameBtn.star:SetVertexColor(1, 0.9, 0)
 
 			nameBtn.label = nameBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
@@ -339,12 +358,12 @@ function MPT:ExpandRow(row)
 						MPT:AddMvp(nameRealm, UnitName("player"), member.class)
 						MPT:OnMvpChanged()
 					end
-					MPT:ShowNotePopup(nameRealm, self)
+					MPT:ShowNotePopup(nameRealm, self, member.class)
 				else
 					if MPT:IsMvp(nameRealm) then
 						local note = MPT:GetMvpNote(nameRealm)
 						if note and note ~= "" then
-							MPT:ShowRemoveMvpConfirm(nameRealm)
+							MPT:ShowRemoveMvpConfirm(nameRealm, member.class)
 						else
 							MPT:RemoveMvp(nameRealm)
 							MPT:OnMvpChanged()
