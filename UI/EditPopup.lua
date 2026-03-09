@@ -259,13 +259,14 @@ function MPT:CreateEditPopup()
 	saveBtn:SetScript("OnClick", function()
 		self:SaveEditPopup()
 	end)
-	popup.saveBtn = saveBtn
 
 	local cancelBtn = self:CreateModernButton(popup, 70, 22, "Cancel")
 	cancelBtn:SetPoint("BOTTOMLEFT", popup, "BOTTOM", 4, 8)
 	cancelBtn:SetScript("OnClick", function()
 		popup:Hide()
 	end)
+
+	popup.saveBtn = saveBtn
 	popup.cancelBtn = cancelBtn
 
 	popup:Hide()

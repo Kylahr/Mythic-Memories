@@ -529,12 +529,10 @@ function MPT:ExpandRow(row)
 
 	detail.actionBar:Show()
 	detail:Show()
-	row.expanded = true
 end
 
 function MPT:CollapseRow(row)
 	if row.detailFrame then
 		row.detailFrame:Hide()
 	end
-	row.expanded = false
 end

@@ -1,7 +1,13 @@
 local _, MPT = ...
 
 local CHANNEL_NAME = "mptmvps"
-local COMM_PREFIX = "MPT"
+
+function MPT:SendSyncMessage(msg)
+	local channel = self:GetSyncChannelIndex()
+	if channel and channel > 0 then
+		self:SendCommMessage(MPT.COMM_PREFIX, msg, "CHANNEL", tostring(channel))
+	end
+end
 
 function MPT:MvpSync_Enable()
 	-- Comm registration is handled centrally in TableShare_Enable
@@ -29,35 +35,27 @@ end
 
 function MPT:RequestMvpSync()
 	local msg = self:Serialize("SYNC_REQUEST", {})
-	local channel = self:GetSyncChannelIndex()
-	if channel and channel > 0 then
-		self:SendCommMessage(COMM_PREFIX, msg, "CHANNEL", tostring(channel))
-	end
+	self:SendSyncMessage(msg)
 end
 
 function MPT:BroadcastMvpAdd(nameRealm)
+	nameRealm = self:NormalizeNameRealm(nameRealm)
 	local mvpData = self.db.global.mvps[nameRealm]
 	local msg = self:Serialize("MVP_ADD", {
 		name = nameRealm,
 		addedBy = UnitName("player"),
-		date = time(),
 		class = mvpData and mvpData.class or nil,
 		note = mvpData and mvpData.note or nil,
 	})
-	local channel = self:GetSyncChannelIndex()
-	if channel and channel > 0 then
-		self:SendCommMessage(COMM_PREFIX, msg, "CHANNEL", tostring(channel))
-	end
+	self:SendSyncMessage(msg)
 end
 
 function MPT:BroadcastMvpRemove(nameRealm)
+	nameRealm = self:NormalizeNameRealm(nameRealm)
 	local msg = self:Serialize("MVP_REMOVE", {
 		name = nameRealm,
 	})
-	local channel = self:GetSyncChannelIndex()
-	if channel and channel > 0 then
-		self:SendCommMessage(COMM_PREFIX, msg, "CHANNEL", tostring(channel))
-	end
+	self:SendSyncMessage(msg)
 end
 
 function MPT:SendFullMvpList(target)
@@ -72,10 +70,7 @@ function MPT:SendFullMvpList(target)
 		})
 	end
 	local msg = self:Serialize("SYNC_FULL", list)
-	local channel = self:GetSyncChannelIndex()
-	if channel and channel > 0 then
-		self:SendCommMessage(COMM_PREFIX, msg, "CHANNEL", tostring(channel))
-	end
+	self:SendSyncMessage(msg)
 end
 
 -- OnMvpCommReceived logic moved to central dispatcher in TableShare.lua

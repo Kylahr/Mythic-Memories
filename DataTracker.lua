@@ -1,5 +1,7 @@
 local _, MPT = ...
 
+local PARTY_UNITS = { "player", "party1", "party2", "party3", "party4" }
+
 function MPT:DataTracker_Enable()
 	self:RegisterEvent("CHALLENGE_MODE_START", "OnChallengeModeStart")
 	self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnChallengeModeCompleted")
@@ -10,8 +12,7 @@ end
 
 function MPT:SnapshotParty()
 	local members = {}
-	local units = { "player", "party1", "party2", "party3", "party4" }
-	for _, unit in ipairs(units) do
+	for _, unit in ipairs(PARTY_UNITS) do
 		if UnitExists(unit) then
 			local name, realm = UnitName(unit)
 			local _, classFilename = UnitClass(unit)
@@ -70,8 +71,7 @@ function MPT:OnCLEU()
 		local resolvedGUID = sourceGUID
 		if not sourceGUID:match("^Player%-") then
 			-- Check if this is a party member's pet
-			local units = { "player", "party1", "party2", "party3", "party4" }
-			for _, unit in ipairs(units) do
+				for _, unit in ipairs(PARTY_UNITS) do
 				local petGUID = UnitGUID(unit .. "pet")
 				if petGUID and petGUID == sourceGUID then
 					resolvedGUID = UnitGUID(unit)
@@ -88,8 +88,7 @@ end
 function MPT:OnZoneChanged()
 	if not self.activeRun then return end
 
-	local currentMapID = C_ChallengeMode.GetActiveChallengeMapID()
-	if not C_ChallengeMode.IsChallengeModeActive() or not currentMapID then
+	if not C_ChallengeMode.IsChallengeModeActive() or not C_ChallengeMode.GetActiveChallengeMapID() then
 		self:SaveFailedRun()
 	end
 end
@@ -102,8 +101,7 @@ function MPT:CollectDamageMeterStats()
 
 	-- Build pet-to-owner mapping so pet stats merge into the player
 	local petOwnerMap = {}
-	local units = { "player", "party1", "party2", "party3", "party4" }
-	for _, unit in ipairs(units) do
+	for _, unit in ipairs(PARTY_UNITS) do
 		local ownerGUID = UnitGUID(unit)
 		if ownerGUID then
 			local petGUID = UnitGUID(unit .. "pet")
@@ -140,12 +138,11 @@ function MPT:CollectDamageMeterStats()
 						local amt = (pcall(function() return source.totalAmount end)) and source.totalAmount or 0
 						-- For merged pet stats, add to existing values
 						stats[resolvedGUID][st.field] = (stats[resolvedGUID][st.field] or 0) + amt
+						local aps = (pcall(function() return source.amountPerSecond end)) and source.amountPerSecond or 0
 						if st.dpsField then
-							local aps = (pcall(function() return source.amountPerSecond end)) and source.amountPerSecond or 0
 							stats[resolvedGUID][st.dpsField] = (stats[resolvedGUID][st.dpsField] or 0) + aps
 						end
 						if st.hpsField then
-							local aps = (pcall(function() return source.amountPerSecond end)) and source.amountPerSecond or 0
 							stats[resolvedGUID][st.hpsField] = (stats[resolvedGUID][st.hpsField] or 0) + aps
 						end
 						if st.field == "deaths" then

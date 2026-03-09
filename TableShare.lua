@@ -1,6 +1,7 @@
 local _, MPT = ...
 
 local COMM_PREFIX = "MPT"
+MPT.COMM_PREFIX = COMM_PREFIX
 local MAX_SHARED_RUNS = 50
 local REQUEST_TIMEOUT = 10
 local LibDeflate = LibStub and LibStub("LibDeflate", true) or nil
@@ -196,7 +197,7 @@ function MPT:OnTableRequest(sender)
 
 	-- Compress with LibDeflate if available
 	if LibDeflate then
-		local compressed = LibDeflate:CompressDeflate(serialized, { level = 1 })
+		local compressed = LibDeflate:CompressDeflate(serialized, { level = 6 })
 		local encoded = LibDeflate:EncodeForWoWAddonChannel(compressed)
 		local msg = self:Serialize("TABLE_RESP_Z", encoded)
 		self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender, "ALERT")
@@ -224,6 +225,7 @@ function MPT:OnTableResponse(sender, data)
 	-- Unpack MVPs: value is table { c=class, n=note } or legacy class/true
 	local mvps = {}
 	for nameRealm, val in pairs(data.v or {}) do
+		nameRealm = self:NormalizeNameRealm(nameRealm)
 		if type(val) == "table" then
 			mvps[nameRealm] = {
 				class = val.c or nil,
@@ -416,6 +418,7 @@ end
 function MPT:CheckPartyMvp(leaderName)
 	-- Returns senderName, note (or nil, nil)
 	if not leaderName then return nil, nil end
+	leaderName = self:NormalizeNameRealm(leaderName)
 
 	for sender, mvpList in pairs(self.partyMvpCache) do
 		-- Check exact match

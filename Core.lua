@@ -1,9 +1,10 @@
 local ADDON_NAME, MPT = ...
 
-local addon = LibStub("AceAddon-3.0"):NewAddon(MPT, ADDON_NAME, "AceConsole-3.0", "AceEvent-3.0", "AceComm-3.0", "AceSerializer-3.0")
+LibStub("AceAddon-3.0"):NewAddon(MPT, ADDON_NAME, "AceConsole-3.0", "AceEvent-3.0", "AceComm-3.0", "AceSerializer-3.0")
 
 function MPT:OnInitialize()
 	self.db = LibStub("AceDB-3.0"):New("MythicMemoriesDB", self.DB_DEFAULTS)
+	self:MigrateMvpKeys()
 
 	self:RegisterChatCommand("mm", "SlashCommand")
 
@@ -97,8 +98,6 @@ function MPT:OnGroupRosterUpdate()
 			end
 		end
 
-		self.partyMvpMembers = currentMembers
-
 		if #mvpJoiners > 0 and self.db.global.mvpNotifications ~= false then
 			self:ShowMvpJoinNotification(mvpJoiners)
 		end
@@ -107,9 +106,8 @@ function MPT:OnGroupRosterUpdate()
 		C_Timer.After(1, function()
 			MPT:BroadcastBrowseMvps()
 		end)
-	else
-		self.partyMvpMembers = currentMembers
 	end
+	self.partyMvpMembers = currentMembers
 end
 
 function MPT:OnGroupLeft()
@@ -219,8 +217,6 @@ function MPT:LoadMockData()
 		local hi = math.floor(idx / 4) + 1
 		local d1i = ((idx) % #dpsNames) + 1
 		local d2i = ((idx + 2) % #dpsNames) + 1
-		local d3i = ((idx + 4) % #dpsNames) + 1
-
 		local myRole = playerRoles[idx] or "DAMAGER"
 
 		local members = {

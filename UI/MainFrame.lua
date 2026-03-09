@@ -225,6 +225,7 @@ function MPT:ApplyTheme(themeKey)
 		self.addNoteDialog = nil
 		self.rowContextMenu = nil
 		self.mvpDropdown = nil
+		self.notifFrame = nil
 		self.linkCopyPopup = nil
 		self.expandedRunId = nil
 		self:CreateMainFrame()
@@ -1326,7 +1327,6 @@ function MPT:RefreshTable()
 				yOffset = yOffset + row.detailFrame:GetHeight()
 			else
 				if row.detailFrame then row.detailFrame:Hide() end
-				row.expanded = false
 			end
 		else
 			row.runData = nil
@@ -2523,6 +2523,7 @@ function MPT:ShowMvpJoinNotification(mvpList)
 	header:ClearAllPoints()
 	header:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 2, yOff)
 	header:SetText(headerText)
+	header:SetTextColor(1, 0.85, 0)
 	header:Show()
 	yOff = yOff - 16
 
@@ -2539,9 +2540,9 @@ function MPT:ShowMvpJoinNotification(mvpList)
 		nameLine:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
 		nameLine:SetJustifyH("LEFT")
 
-		local r, g, b = self:GetClassColor(mvp.class)
 		nameLine:SetText(mvp.name)
-		nameLine:SetTextColor(r, g, b)
+		local cr, cg, cb = self:GetClassColor(mvp.class)
+		nameLine:SetTextColor(cr, cg, cb)
 		nameLine:Show()
 		lineIdx = lineIdx + 1
 		yOff = yOff - 15

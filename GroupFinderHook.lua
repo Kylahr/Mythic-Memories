@@ -147,9 +147,12 @@ end
 
 function MPT:MatchMvpName(name)
 	if not name then return nil end
+	name = self:NormalizeNameRealm(name)
 	local nameLower = name:lower()
 	local inputBase = name:match("^([^%-]+)")
 	local inputBaseLower = inputBase and inputBase:lower()
+
+	local inputHasRealm = name:find("%-") ~= nil
 
 	for mvpName, _ in pairs(self.db.global.mvps) do
 		-- Exact match
@@ -160,13 +163,14 @@ function MPT:MatchMvpName(name)
 		if mvpName:lower() == nameLower then
 			return mvpName
 		end
-		-- MVP has realm, input doesn't (base name match)
 		local mvpBase = mvpName:match("^([^%-]+)")
-		if mvpBase and mvpBase:lower() == nameLower then
+		local mvpHasRealm = mvpName:find("%-") ~= nil
+		-- MVP has realm, input doesn't (base name match)
+		if not inputHasRealm and mvpBase and mvpBase:lower() == nameLower then
 			return mvpName
 		end
-		-- Input has realm, MVP doesn't (or different realm formatting)
-		if inputBaseLower and mvpBase and mvpBase:lower() == inputBaseLower then
+		-- Input has realm, MVP doesn't (base name match only when MVP has no realm)
+		if inputHasRealm and not mvpHasRealm and inputBaseLower and mvpBase and mvpBase:lower() == inputBaseLower then
 			return mvpName
 		end
 	end

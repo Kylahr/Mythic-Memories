@@ -209,7 +209,33 @@ function MPT:UpdateRunField(id, field, value)
 	return false
 end
 
+function MPT:NormalizeNameRealm(nameRealm)
+	local name, realm = nameRealm:match("^([^%-]+)%-(.+)$")
+	if name and realm then
+		return name .. "-" .. realm:gsub(" ", "")
+	end
+	return nameRealm
+end
+
+function MPT:MigrateMvpKeys()
+	local mvps = self.db.global.mvps
+	local toRename = {}
+	for key, data in pairs(mvps) do
+		local normalized = self:NormalizeNameRealm(key)
+		if normalized ~= key then
+			toRename[#toRename + 1] = { old = key, new = normalized, data = data }
+		end
+	end
+	for _, entry in ipairs(toRename) do
+		if not mvps[entry.new] then
+			mvps[entry.new] = entry.data
+		end
+		mvps[entry.old] = nil
+	end
+end
+
 function MPT:AddMvp(nameRealm, addedBy, class, note)
+	nameRealm = self:NormalizeNameRealm(nameRealm)
 	if not self.db.global.mvps[nameRealm] then
 		local truncNote = note
 		if truncNote and #truncNote > 250 then
@@ -231,6 +257,7 @@ function MPT:AddMvp(nameRealm, addedBy, class, note)
 end
 
 function MPT:RemoveMvp(nameRealm)
+	nameRealm = self:NormalizeNameRealm(nameRealm)
 	if self.db.global.mvps[nameRealm] then
 		self.db.global.mvps[nameRealm] = nil
 		return true
@@ -239,10 +266,12 @@ function MPT:RemoveMvp(nameRealm)
 end
 
 function MPT:IsMvp(nameRealm)
+	nameRealm = self:NormalizeNameRealm(nameRealm)
 	return self.db.global.mvps[nameRealm] ~= nil
 end
 
 function MPT:SetMvpNote(nameRealm, note)
+	nameRealm = self:NormalizeNameRealm(nameRealm)
 	if not self.db.global.mvps[nameRealm] then return false end
 	if note and #note > 250 then
 		note = note:sub(1, 250)
@@ -252,11 +281,13 @@ function MPT:SetMvpNote(nameRealm, note)
 end
 
 function MPT:GetMvpNote(nameRealm)
+	nameRealm = self:NormalizeNameRealm(nameRealm)
 	local data = self.db.global.mvps[nameRealm]
 	return data and data.note or nil
 end
 
 function MPT:GetViewMvpNote(nameRealm)
+	nameRealm = self:NormalizeNameRealm(nameRealm)
 	if self.viewingData and self.viewingData.mvps[nameRealm] then
 		return self.viewingData.mvps[nameRealm].note or nil
 	end
@@ -264,6 +295,7 @@ function MPT:GetViewMvpNote(nameRealm)
 end
 
 function MPT:IsViewMvp(nameRealm)
+	nameRealm = self:NormalizeNameRealm(nameRealm)
 	if self.viewingData then
 		return self.viewingData.mvps[nameRealm] ~= nil
 	end
