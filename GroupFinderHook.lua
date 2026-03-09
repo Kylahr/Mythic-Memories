@@ -5,7 +5,7 @@ local hookedFrames = {}
 function MPT:GroupFinderHook_Enable()
 	-- LFGListFrame is load-on-demand (Blizzard_GroupFinder).
 	-- Try immediately in case it's already loaded, otherwise wait.
-	if self:TryHookApplicationViewer() then return end
+	if self:TryHookGroupFinder() then return end
 	self:RegisterEvent("ADDON_LOADED", "OnGroupFinderAddonLoaded")
 end
 
@@ -14,9 +14,15 @@ function MPT:OnGroupFinderAddonLoaded(event, addonName)
 		self:UnregisterEvent("ADDON_LOADED")
 		-- Defer one frame so the UI is fully initialized
 		C_Timer.After(0, function()
-			MPT:TryHookApplicationViewer()
+			MPT:TryHookGroupFinder()
 		end)
 	end
+end
+
+function MPT:TryHookGroupFinder()
+	local appOk = self:TryHookApplicationViewer()
+	local searchOk = self:TryHookSearchPanel()
+	return appOk or searchOk
 end
 
 function MPT:TryHookApplicationViewer()
@@ -73,27 +79,54 @@ function MPT:HookMemberFrame(memberFrame)
 	-- Append MVP info to the existing tooltip (runs after Blizzard's OnEnter)
 	memberFrame:HookScript("OnEnter", function(self)
 		local nr = self.mptMvpName
-		if not nr then return end
+		local vouchedBy = self.mptVouchedBy
+		local partyNote = self.mptPartyNote
+		if not nr and not vouchedBy then return end
 		GameTooltip:AddLine(" ")
-		GameTooltip:AddLine("MVP", 1, 0.82, 0)
-		local note = MPT:GetMvpNote(nr)
-		if note and note ~= "" then
-			GameTooltip:AddLine(note, 1, 1, 1, true)
+		if nr and vouchedBy then
+			GameTooltip:AddLine("MVP", 0.2, 1, 0.2)
+			GameTooltip:AddLine("In your list and " .. vouchedBy .. "'s list", 0.8, 0.8, 0.8, true)
+		elseif nr then
+			GameTooltip:AddLine("MVP", 1, 0.85, 0)
+		else
+			GameTooltip:AddLine("MVP", 0.3, 0.7, 1)
+			GameTooltip:AddLine("Vouched by " .. vouchedBy, 0.8, 0.8, 0.8, true)
+		end
+		if nr then
+			local note = MPT:GetMvpNote(nr)
+			if note and note ~= "" then
+				GameTooltip:AddLine(note, 1, 1, 1, true)
+			end
+		end
+		if partyNote and partyNote ~= "" then
+			GameTooltip:AddLine(vouchedBy .. "'s note: " .. partyNote, 0.7, 0.85, 1, true)
 		end
 		GameTooltip:Show()
 	end)
 
 end
 
-function MPT:ApplyMvpStar(memberFrame)
+function MPT:ApplyMvpStar(memberFrame, inLocal, vouchedBy)
 	if not memberFrame.Name then return end
 	if not memberFrame.mptStar then
 		local star = memberFrame:CreateTexture(nil, "OVERLAY", nil, 7)
 		star:SetSize(14, 14)
 		star:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
-		star:SetVertexColor(1, 0.82, 0)
 		memberFrame.mptStar = star
 	end
+
+	-- Color coding: gold (yours), blue (party), green (both)
+	if inLocal and vouchedBy then
+		memberFrame.mptStar:SetDesaturated(true)
+		memberFrame.mptStar:SetVertexColor(0.2, 1, 0.2)
+	elseif inLocal then
+		memberFrame.mptStar:SetDesaturated(false)
+		memberFrame.mptStar:SetVertexColor(1, 0.85, 0)
+	else
+		memberFrame.mptStar:SetDesaturated(true)
+		memberFrame.mptStar:SetVertexColor(0.3, 0.7, 1)
+	end
+
 	-- Position after the name text
 	local nameWidth = memberFrame.Name:GetStringWidth() or 0
 	memberFrame.mptStar:ClearAllPoints()
@@ -114,14 +147,26 @@ end
 
 function MPT:MatchMvpName(name)
 	if not name then return nil end
+	local nameLower = name:lower()
+	local inputBase = name:match("^([^%-]+)")
+	local inputBaseLower = inputBase and inputBase:lower()
+
 	for mvpName, _ in pairs(self.db.global.mvps) do
 		-- Exact match
 		if mvpName == name then
 			return mvpName
 		end
-		-- Match without realm (mvp is "Name-Realm", applicant might be just "Name")
-		local baseName = mvpName:match("^(.+)%-")
-		if baseName and baseName == name then
+		-- Case-insensitive exact match
+		if mvpName:lower() == nameLower then
+			return mvpName
+		end
+		-- MVP has realm, input doesn't (base name match)
+		local mvpBase = mvpName:match("^([^%-]+)")
+		if mvpBase and mvpBase:lower() == nameLower then
+			return mvpName
+		end
+		-- Input has realm, MVP doesn't (or different realm formatting)
+		if inputBaseLower and mvpBase and mvpBase:lower() == inputBaseLower then
 			return mvpName
 		end
 	end
@@ -138,19 +183,224 @@ function MPT:MarkMvpInLFG(memberFrame, appID, memberIdx)
 		return
 	end
 
-	local matchedMvp = self:MatchMvpName(name)
+	local inLocal = self:MatchMvpName(name)
+	local vouchedBy, partyNote = self:CheckPartyMvp(name)
 
-	if not matchedMvp then
+	if not inLocal and not vouchedBy then
 		self:HideMvpMark(memberFrame)
 		return
 	end
 
-	-- Store matched MVP name — star is applied via SetText hook
-	memberFrame.mptMvpName = matchedMvp
-	self:ApplyMvpStar(memberFrame)
+	memberFrame.mptMvpName = inLocal
+	memberFrame.mptVouchedBy = vouchedBy
+	memberFrame.mptPartyNote = partyNote
+	self:ApplyMvpStar(memberFrame, inLocal, vouchedBy)
 end
 
 function MPT:HideMvpMark(memberFrame)
 	memberFrame.mptMvpName = nil
+	memberFrame.mptVouchedBy = nil
 	if memberFrame.mptStar then memberFrame.mptStar:Hide() end
+end
+
+-- ── Search Panel: Crown on group listings with MVP leaders ──────
+
+function MPT:TryHookSearchPanel()
+	local scrollBox = LFGListFrame
+		and LFGListFrame.SearchPanel
+		and LFGListFrame.SearchPanel.ScrollBox
+
+	if not scrollBox then return false end
+
+	local ok, err = pcall(function()
+		if ScrollBoxListMixin and ScrollBoxListMixin.Event and ScrollBoxListMixin.Event.OnUpdate then
+			local frames = scrollBox.GetFrames and scrollBox:GetFrames()
+			if frames then
+				self:OnSearchFramesChanged(frames)
+			end
+			scrollBox:RegisterCallback(ScrollBoxListMixin.Event.OnUpdate, function()
+				local f = scrollBox:GetFrames()
+				if f then
+					MPT:OnSearchFramesChanged(f)
+				end
+			end, "MPT_SearchPanel")
+		end
+	end)
+
+	if not ok then
+		self:Print("Mythic Memories: Search Panel hook error — " .. tostring(err))
+	end
+
+	return ok
+end
+
+function MPT:OnSearchFramesChanged(frames)
+	for _, frame in ipairs(frames) do
+		self:UpdateSearchResultCrown(frame)
+	end
+end
+
+function MPT:GetSearchResultID(frame)
+	-- ScrollBox frames expose element data via GetElementData
+	if frame.GetElementData then
+		local data = frame:GetElementData()
+		if data then
+			-- Data can be the searchResultID directly (number) or a table with the ID
+			if type(data) == "number" then
+				return data
+			elseif type(data) == "table" then
+				return data.searchResultID or data.resultID
+			end
+		end
+	end
+	return nil
+end
+
+function MPT:CreateCrown(frame)
+	local crown = CreateFrame("Frame", nil, frame)
+	crown:SetSize(18, 18)
+	crown:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, 0)
+	crown:SetFrameLevel(frame:GetFrameLevel() + 10)
+
+	crown.icon = crown:CreateTexture(nil, "OVERLAY", nil, 7)
+	crown.icon:SetAllPoints()
+	crown.icon:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
+	crown.icon:SetVertexColor(1, 0.85, 0)
+
+	-- Tooltip on hover
+	crown:EnableMouse(true)
+	crown:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		if self.mptTooltipLines then
+			for _, line in ipairs(self.mptTooltipLines) do
+				GameTooltip:AddLine(line.text, line.r, line.g, line.b, line.wrap)
+			end
+		end
+		GameTooltip:Show()
+	end)
+	crown:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	frame.mptCrown = crown
+	return crown
+end
+
+function MPT:UpdateSearchResultCrown(frame)
+	local searchResultID = self:GetSearchResultID(frame)
+	if not searchResultID then
+		if frame.mptCrown then frame.mptCrown:Hide() end
+		return
+	end
+
+	-- Get leader name from search result
+	local ok, resultData = pcall(C_LFGList.GetSearchResultInfo, searchResultID)
+	if not ok or not resultData then
+		if frame.mptCrown then frame.mptCrown:Hide() end
+		return
+	end
+
+	local leaderName = resultData.leaderName
+	if not leaderName then
+		if frame.mptCrown then frame.mptCrown:Hide() end
+		return
+	end
+
+	-- Check local MVP list
+	local inLocal = self:MatchMvpName(leaderName)
+	-- Check party members' MVP lists
+	local vouchedBy, partyNote = self:CheckPartyMvp(leaderName)
+
+	if not inLocal and not vouchedBy then
+		if frame.mptCrown then frame.mptCrown:Hide() end
+		frame.mptLeaderMvpInfo = nil
+		return
+	end
+
+	-- Get leader class for coloring (API first, then fall back to MVP DB)
+	local leaderClass = nil
+	local numMembers = resultData.numMembers or 0
+	for i = 1, numMembers do
+		local pOk, playerInfo = pcall(C_LFGList.GetSearchResultPlayerInfo, searchResultID, i)
+		if pOk and playerInfo and playerInfo.isLeader then
+			leaderClass = playerInfo.classFilename
+			break
+		end
+	end
+	if not leaderClass and inLocal then
+		local mvpData = self.db.global.mvps[inLocal]
+		if mvpData then leaderClass = mvpData.class end
+	end
+	local classR, classG, classB = self:GetClassColor(leaderClass)
+
+	-- Create crown if needed
+	local crown = frame.mptCrown or self:CreateCrown(frame)
+
+	-- Hook the search result frame tooltip (once) to append MVP info
+	if not frame.mptSearchTooltipHooked then
+		frame.mptSearchTooltipHooked = true
+		frame:HookScript("OnEnter", function(self)
+			if not self.mptLeaderMvpInfo then return end
+			local info = self.mptLeaderMvpInfo
+			GameTooltip:AddLine(" ")
+			-- Leader name in class color
+			GameTooltip:AddLine(info.leaderName, info.classR, info.classG, info.classB)
+			if info.inLocal and info.vouchedBy then
+				GameTooltip:AddLine("MVP", 0.2, 1, 0.2)
+				GameTooltip:AddLine("In your list and " .. info.vouchedBy .. "'s list", 0.8, 0.8, 0.8, true)
+			elseif info.inLocal then
+				GameTooltip:AddLine("MVP", 1, 0.85, 0)
+			else
+				GameTooltip:AddLine("MVP", 0.3, 0.7, 1)
+				GameTooltip:AddLine("Vouched by " .. info.vouchedBy, 0.8, 0.8, 0.8, true)
+			end
+			if info.localNote and info.localNote ~= "" then
+				GameTooltip:AddLine(info.localNote, 1, 1, 1, true)
+			end
+			if info.partyNote and info.partyNote ~= "" then
+				GameTooltip:AddLine(info.vouchedBy .. "'s note: " .. info.partyNote, 0.7, 0.85, 1, true)
+			end
+			GameTooltip:Show()
+		end)
+	end
+
+	-- Store info for the frame tooltip
+	local localNote = inLocal and self:GetMvpNote(inLocal) or nil
+	frame.mptLeaderMvpInfo = {
+		leaderName = leaderName,
+		classR = classR,
+		classG = classG,
+		classB = classB,
+		inLocal = inLocal,
+		vouchedBy = vouchedBy,
+		localNote = localNote,
+		partyNote = partyNote,
+	}
+
+	-- Set color based on who has them as MVP
+	local tooltipLines = {}
+	-- Crown tooltip: leader name in class color
+	tooltipLines[#tooltipLines + 1] = { text = leaderName, r = classR, g = classG, b = classB }
+	if inLocal and vouchedBy then
+		crown.icon:SetDesaturated(true)
+		crown.icon:SetVertexColor(0.2, 1, 0.2)
+		tooltipLines[#tooltipLines + 1] = { text = "MVP — in your list and " .. vouchedBy .. "'s list", r = 0.2, g = 1, b = 0.2, wrap = true }
+	elseif inLocal then
+		crown.icon:SetDesaturated(false)
+		crown.icon:SetVertexColor(1, 0.85, 0)
+		tooltipLines[#tooltipLines + 1] = { text = "MVP", r = 1, g = 0.85, b = 0 }
+	else
+		crown.icon:SetDesaturated(true)
+		crown.icon:SetVertexColor(0.3, 0.7, 1)
+		tooltipLines[#tooltipLines + 1] = { text = "MVP — vouched by " .. vouchedBy, r = 0.3, g = 0.7, b = 1, wrap = true }
+	end
+	if localNote and localNote ~= "" then
+		tooltipLines[#tooltipLines + 1] = { text = localNote, r = 1, g = 1, b = 1, wrap = true }
+	end
+	if partyNote and partyNote ~= "" then
+		tooltipLines[#tooltipLines + 1] = { text = vouchedBy .. "'s note: " .. partyNote, r = 0.7, g = 0.85, b = 1, wrap = true }
+	end
+
+	crown.mptTooltipLines = tooltipLines
+	crown:Show()
 end

@@ -7,6 +7,10 @@ MPT.DB_DEFAULTS = {
 		mvps = {},
 		favourites = {},
 		shareTable = true,
+		mvpNotifications = true,
+		mvpSound = true,
+		notificationPos = { point = "TOP", x = 0, y = -200 },
+		theme = "coffee",
 	},
 }
 

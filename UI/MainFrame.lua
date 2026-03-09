@@ -4,29 +4,235 @@ local ROW_HEIGHT = 32
 local VISIBLE_ROWS = 15
 local HEADER_HEIGHT = 28
 local MVP_PANEL_WIDTH = 200
+local MVP_SEARCH_HEIGHT = 28
 
--- ── Sepia/grey palette (wider contrast range) ────────────────
-local C = {
-	bg         = { 0.12, 0.12, 0.09 },     -- main frame / dark shell
-	titleBar   = { 0.30, 0.29, 0.23 },     -- title strip (kept for column headers)
-	filterBar  = { 0.16, 0.16, 0.13 },     -- filter bar strip
-	panelBg    = { 0.20, 0.19, 0.16 },     -- elevated card/panel bg
-	contentBg  = { 0.18, 0.17, 0.14 },     -- lighter content area inset
-	headerBg   = { 0.30, 0.29, 0.23 },     -- column header bar
-	rowBase    = { 0.18, 0.18, 0.15 },     -- odd rows
-	rowAlt     = { 0.22, 0.21, 0.17 },     -- even rows
-	inputBg    = { 0.30, 0.29, 0.24 },     -- interactive surface, clearly visible on cards
-	btnBg      = { 0.25, 0.24, 0.20 },     -- button background
-	btnHover   = { 0.33, 0.31, 0.25 },     -- button hover
-	accent     = { 1, 0.82, 0 },           -- gold accent
-	accentDim  = { 0.7, 0.57, 0 },         -- dimmed gold
-	textPrimary= { 0.92, 0.90, 0.84 },     -- warm cream
-	textMuted  = { 0.50, 0.48, 0.42 },     -- muted warm grey
-	textLabel  = { 0.65, 0.63, 0.56 },     -- label text
-	divider    = { 0.28, 0.26, 0.21 },     -- dividers
-	highlight  = { 1, 0.95, 0.8, 0.06 },   -- row hover
-	popupBg    = { 0.20, 0.19, 0.16 },     -- popup/dialog backgrounds (matches panelBg)
+-- ── Theme system ──────────────────────────────────────────────
+-- Each theme is a full palette table. Add new themes below.
+-- Source hex values in comments for easy tweaking.
+
+local THEMES = {}
+
+-- Coffee: #D9A883 Toasty, #A98062 Espresso Foam, #956643 Mocha Latte,
+--         #623528 Cold Brew, #343434 Espresso Noir
+THEMES["coffee"] = {
+	bg         = { 0.13, 0.12, 0.11 },     -- main frame / dark shell
+	titleBar   = { 0.24, 0.15, 0.11 },     -- title strip — Cold Brew darkened
+	filterBar  = { 0.17, 0.15, 0.13 },     -- filter bar strip
+	panelBg    = { 0.20, 0.17, 0.14 },     -- elevated card/panel bg
+	contentBg  = { 0.18, 0.16, 0.14 },     -- content area inset
+	headerBg   = { 0.28, 0.18, 0.14 },     -- column header bar — Cold Brew
+	rowBase    = { 0.17, 0.15, 0.13 },     -- odd rows
+	rowAlt     = { 0.21, 0.18, 0.15 },     -- even rows
+	inputBg    = { 0.28, 0.22, 0.17 },     -- input fields
+	btnBg      = { 0.26, 0.20, 0.15 },     -- button background
+	btnHover   = { 0.34, 0.25, 0.19 },     -- button hover
+	accent     = { 0.85, 0.66, 0.51 },     -- Toasty — primary accent
+	accentDim  = { 0.58, 0.40, 0.26 },     -- Mocha Latte — dimmed accent
+	textPrimary= { 0.92, 0.80, 0.65 },     -- lighter Toasty — primary text
+	textMuted  = { 0.50, 0.38, 0.30 },     -- muted — dark Espresso Foam
+	textLabel  = { 0.66, 0.50, 0.38 },     -- Espresso Foam — labels
+	divider    = { 0.30, 0.19, 0.14 },     -- Cold Brew — dividers
+	highlight  = { 0.85, 0.66, 0.51, 0.06 }, -- Toasty glow — row hover
+	popupBg    = { 0.20, 0.17, 0.14 },     -- popup/dialog (matches panelBg)
+	mvpPanelBg = { 0.10, 0.09, 0.08 },     -- deep espresso
+	mvpRowBase = { 0.14, 0.12, 0.10 },     -- MVP odd rows
+	mvpRowAlt  = { 0.18, 0.15, 0.12 },     -- MVP even rows
+	mvpInputBg = { 0.22, 0.18, 0.14 },     -- MVP search bar
+
+	-- Detail/tree view (RowDetail)
+	detailBg      = { 0.15, 0.13, 0.11 },   -- detail background
+	detailCardOdd = { 0.22, 0.18, 0.14 },   -- brighter card
+	detailCardEven= { 0.18, 0.16, 0.13 },   -- darker card
+	detailHeaderBg= { 0.25, 0.20, 0.15 },   -- header strip
+	detailActionBg= { 0.18, 0.16, 0.13 },   -- action bar zone
+
+	-- Semantic colors
+	dangerText   = { 1, 0.4, 0.4 },         -- delete/reset button text
+	dangerHover  = { 1, 0.3, 0.3 },         -- delete icon hover
+	dangerBg     = { 0.25, 0.10, 0.08 },    -- delete button hover bg
+	successText  = { 0.4, 1, 0.4 },         -- "Copied!" confirmation
+	successDim   = { 0.6, 0.9, 0.6 },       -- copy hint text
+	checkGreen   = { 0, 1, 0 },             -- MVP checkmark
+	levelText    = { 0.2, 0.8, 0.2 },       -- level column
+	textNeutral  = { 0.92, 0.82, 0.68 },    -- neutral warm text (dialogs)
+	bubbleHover  = { 1, 0.95, 0.8, 0.05 },  -- MVP bubble hover
+	borderColor  = { 0.18, 0.16, 0.13 },    -- popup borders
+	scrollBg     = { 0.30, 0.24, 0.18 },    -- scrollable area / input containers
+	charCount    = { 0.50, 0.38, 0.30 },     -- character count text
 }
+
+-- Forest: #BEB982 Sage, #C1B052 Golden Olive, #081B18 Deep Forest,
+--         #203B37 Dark Teal, #5AAF76 Green, #06C0B0 Bright Teal
+THEMES["forest"] = {
+	bg         = { 0.03, 0.11, 0.09 },     -- Deep Forest — dark shell
+	titleBar   = { 0.13, 0.23, 0.22 },     -- Dark Teal — title strip
+	filterBar  = { 0.07, 0.15, 0.13 },     -- between forest and teal
+	panelBg    = { 0.10, 0.20, 0.18 },     -- elevated card/panel
+	contentBg  = { 0.08, 0.17, 0.15 },     -- content area inset
+	headerBg   = { 0.13, 0.23, 0.22 },     -- Dark Teal — column headers
+	rowBase    = { 0.06, 0.14, 0.12 },     -- odd rows
+	rowAlt     = { 0.09, 0.18, 0.16 },     -- even rows
+	inputBg    = { 0.13, 0.23, 0.22 },     -- input fields — Dark Teal
+	btnBg      = { 0.11, 0.21, 0.19 },     -- button background
+	btnHover   = { 0.16, 0.28, 0.26 },     -- button hover
+	accent     = { 0.35, 0.69, 0.46 },     -- Green #5AAF76
+	accentDim  = { 0.76, 0.69, 0.32 },     -- Golden Olive #C1B052
+	textPrimary= { 0.80, 0.78, 0.58 },     -- lighter Sage
+	textMuted  = { 0.45, 0.50, 0.40 },     -- muted sage
+	textLabel  = { 0.60, 0.62, 0.46 },     -- mid sage
+	divider    = { 0.13, 0.23, 0.22 },     -- Dark Teal — dividers
+	highlight  = { 0.35, 0.69, 0.46, 0.06 }, -- Green glow — row hover
+	popupBg    = { 0.10, 0.20, 0.18 },     -- popup/dialog
+	mvpPanelBg = { 0.02, 0.08, 0.07 },     -- deeper than shell
+	mvpRowBase = { 0.05, 0.13, 0.11 },     -- MVP odd rows
+	mvpRowAlt  = { 0.08, 0.17, 0.15 },     -- MVP even rows
+	mvpInputBg = { 0.11, 0.21, 0.19 },     -- MVP search bar
+
+	detailBg      = { 0.05, 0.13, 0.11 },   -- detail background
+	detailCardOdd = { 0.09, 0.18, 0.16 },   -- brighter card
+	detailCardEven= { 0.06, 0.15, 0.13 },   -- darker card
+	detailHeaderBg= { 0.13, 0.23, 0.22 },   -- header strip
+	detailActionBg= { 0.06, 0.15, 0.13 },   -- action bar zone
+
+	dangerText   = { 1, 0.4, 0.4 },
+	dangerHover  = { 1, 0.3, 0.3 },
+	dangerBg     = { 0.25, 0.10, 0.08 },
+	successText  = { 0.4, 1, 0.4 },
+	successDim   = { 0.6, 0.9, 0.6 },
+	checkGreen   = { 0, 1, 0 },
+	levelText    = { 0.02, 0.75, 0.69 },    -- Bright Teal #06C0B0
+	textNeutral  = { 0.80, 0.78, 0.58 },    -- Sage neutral
+	bubbleHover  = { 0.35, 0.69, 0.46, 0.05 }, -- Green glow
+	borderColor  = { 0.08, 0.17, 0.15 },
+	scrollBg     = { 0.13, 0.23, 0.22 },
+	charCount    = { 0.45, 0.50, 0.40 },
+}
+
+-- Crimson: #3D1E38 Aubergine, #6B1634 Claret, #C54110 Madder Lake,
+--          #F0B734 Rain Boots, #1B3D54 Prussian Blue
+THEMES["crimson"] = {
+	bg         = { 0.06, 0.08, 0.12 },     -- Prussian Blue darkened — dark shell
+	titleBar   = { 0.18, 0.10, 0.16 },     -- Aubergine — title strip
+	filterBar  = { 0.10, 0.10, 0.14 },     -- between Prussian and Aubergine
+	panelBg    = { 0.14, 0.12, 0.17 },     -- elevated card/panel
+	contentBg  = { 0.12, 0.11, 0.15 },     -- content area inset
+	headerBg   = { 0.24, 0.08, 0.14 },     -- Claret darkened — column headers
+	rowBase    = { 0.09, 0.09, 0.13 },     -- odd rows
+	rowAlt     = { 0.12, 0.11, 0.16 },     -- even rows
+	inputBg    = { 0.20, 0.12, 0.18 },     -- Aubergine — input fields
+	btnBg      = { 0.18, 0.11, 0.16 },     -- button background
+	btnHover   = { 0.26, 0.14, 0.20 },     -- button hover
+	accent     = { 0.94, 0.72, 0.20 },     -- Rain Boots #F0B734
+	accentDim  = { 0.77, 0.25, 0.06 },     -- Madder Lake #C54110
+	textPrimary= { 0.92, 0.82, 0.70 },     -- warm light
+	textMuted  = { 0.50, 0.42, 0.45 },     -- muted purple-grey
+	textLabel  = { 0.65, 0.55, 0.55 },     -- mid warm
+	divider    = { 0.28, 0.12, 0.18 },     -- Claret — dividers
+	highlight  = { 0.94, 0.72, 0.20, 0.06 }, -- Rain Boots glow
+	popupBg    = { 0.14, 0.12, 0.17 },     -- popup/dialog
+	mvpPanelBg = { 0.04, 0.05, 0.08 },     -- deeper than shell
+	mvpRowBase = { 0.08, 0.08, 0.12 },     -- MVP odd rows
+	mvpRowAlt  = { 0.11, 0.10, 0.15 },     -- MVP even rows
+	mvpInputBg = { 0.18, 0.11, 0.16 },     -- MVP search bar
+
+	detailBg      = { 0.08, 0.08, 0.12 },   -- detail background
+	detailCardOdd = { 0.12, 0.11, 0.16 },   -- brighter card
+	detailCardEven= { 0.09, 0.09, 0.13 },   -- darker card
+	detailHeaderBg= { 0.20, 0.10, 0.16 },   -- header strip
+	detailActionBg= { 0.09, 0.09, 0.13 },   -- action bar zone
+
+	dangerText   = { 1, 0.4, 0.4 },
+	dangerHover  = { 1, 0.3, 0.3 },
+	dangerBg     = { 0.25, 0.10, 0.08 },
+	successText  = { 0.4, 1, 0.4 },
+	successDim   = { 0.6, 0.9, 0.6 },
+	checkGreen   = { 0, 1, 0 },
+	levelText    = { 0.94, 0.72, 0.20 },    -- Rain Boots
+	textNeutral  = { 0.92, 0.82, 0.70 },
+	bubbleHover  = { 0.94, 0.72, 0.20, 0.05 },
+	borderColor  = { 0.12, 0.11, 0.15 },
+	scrollBg     = { 0.20, 0.12, 0.18 },
+	charCount    = { 0.50, 0.42, 0.45 },
+}
+
+-- Theme list for dropdown (display name → key)
+local THEME_LIST = {
+	{ key = "coffee", name = "Coffee" },
+	{ key = "forest", name = "Forest" },
+	{ key = "crimson", name = "Crimson" },
+}
+
+-- Active palette — independent copy so theme switching doesn't corrupt source tables
+local C = {}
+for k, v in pairs(THEMES["coffee"]) do C[k] = v end
+
+-- Expose palette globally so other files (EditPopup, RowDetail) can access it
+MPT.C = C
+
+function MPT:ApplyTheme(themeKey)
+	local theme = THEMES[themeKey]
+	if not theme then return end
+	self.db.global.theme = themeKey
+	-- Update the palette reference (C is upvalue for all UI code)
+	for k, v in pairs(theme) do
+		C[k] = v
+	end
+	self.C = C
+	-- Update font objects to new palette colors
+	MPTFont_Title:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+	MPTFont_Header:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+	MPTFont_Cell:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+	MPTFont_Label:SetTextColor(C.textLabel[1], C.textLabel[2], C.textLabel[3])
+	MPTFont_Small:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	-- Rebuild UI to apply
+	if self.mainFrame then
+		self:HideAllPopups()
+		-- Destroy globally-named frames so templates reinitialize cleanly
+		local globalNames = {
+			"MPTMainFrame", "MPTScrollFrame", "MPTScrollFrameScrollBar",
+			"MPTScrollFrameScrollBarScrollUpButton", "MPTScrollFrameScrollBarScrollDownButton",
+			"MPTMvpSearch", "MPTHelpPanel", "MPTDeleteRunDialog",
+			"MPTFilterPopup", "MPTNotification", "MPTOptionsPanel", "MPTResetDialog",
+		}
+		for _, name in ipairs(globalNames) do
+			local f = _G[name]
+			if f and f.Hide then f:Hide() end
+			if f and f.SetParent then f:SetParent(nil) end
+			_G[name] = nil
+		end
+		-- Clear row globals
+		for i = 1, 50 do
+			local name = "MPTRow" .. i
+			local f = _G[name]
+			if f then
+				f:Hide()
+				f:SetParent(nil)
+				_G[name] = nil
+			end
+		end
+		self.mainFrame:Hide()
+		self.mainFrame:SetParent(nil)
+		self.mainFrame = nil
+		self.optionsPanel = nil
+		self.mvpsSidePanel = nil
+		self.editPopup = nil
+		self.filterPopup = nil
+		self.helpPanel = nil
+		self.resetDialog = nil
+		self.deleteRunDialog = nil
+		self.notePopup = nil
+		self.removeMvpDialog = nil
+		self.addNoteDialog = nil
+		self.rowContextMenu = nil
+		self.mvpDropdown = nil
+		self.linkCopyPopup = nil
+		self.expandedRunId = nil
+		self:CreateMainFrame()
+		self.mainFrame:Show()
+		self:RefreshTable()
+		self:RefreshMvpsSidePanel()
+	end
+end
 
 -- ── Custom font objects ───────────────────────────────────────
 local FONT_FILE = "Fonts\\FRIZQT__.TTF"
@@ -128,7 +334,7 @@ function MPT:CreateSearchInput(parent, name, width, showClearX)
 		clearLabel:SetText("x")
 		clearLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
 		clearBtn:SetScript("OnEnter", function()
-			clearLabel:SetTextColor(1, 0.3, 0.3)
+			clearLabel:SetTextColor(C.dangerHover[1], C.dangerHover[2], C.dangerHover[3])
 		end)
 		clearBtn:SetScript("OnLeave", function()
 			clearLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
@@ -215,7 +421,7 @@ function MPT:CreateCloseButton(parent)
 	label:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
 
 	btn:SetScript("OnEnter", function()
-		label:SetTextColor(1, 0.3, 0.3)
+		label:SetTextColor(C.dangerHover[1], C.dangerHover[2], C.dangerHover[3])
 	end)
 	btn:SetScript("OnLeave", function()
 		label:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
@@ -372,8 +578,11 @@ function MPT:RefreshDropdownList(dropdown)
 	local MAX_VISIBLE = 10
 	local ITEM_HEIGHT = 20
 
-	-- Build display list: "All" + items
-	local allItems = { { value = "", display = dropdown._defaultText } }
+	-- Build display list: optionally "All" + items
+	local allItems = {}
+	if not dropdown._noDefault then
+		allItems[1] = { value = "", display = dropdown._defaultText }
+	end
 	for _, item in ipairs(items) do
 		if type(item) == "table" then
 			allItems[#allItems + 1] = item
@@ -397,6 +606,9 @@ function MPT:RefreshDropdownList(dropdown)
 			end
 			btn:SetScript("OnClick", function()
 				dropdown:SetValue(item.value, item.display)
+				if dropdown._onSelect then
+					dropdown._onSelect(item.value, item.display)
+				end
 			end)
 			btn:Show()
 		else
@@ -420,7 +632,7 @@ function MPT:CreateMainFrame()
 	local SCROLLBAR_WIDTH = 18
 	local tableWidth = getTotalWidth()
 	local tableAreaWidth = math.max(tableWidth + SCROLLBAR_WIDTH + 12, 730)
-	local totalWidth = MVP_PANEL_WIDTH + 2 + tableAreaWidth  -- MVP left, 2px gap, table (scrollbar flush right)
+	local totalWidth = MVP_PANEL_WIDTH + tableAreaWidth  -- MVP left, table (scrollbar flush right)
 	-- 26 (title bar) + 30 (filter bar gap) + HEADER_HEIGHT + rows = exact fit
 	local totalHeight = 26 + 30 + HEADER_HEIGHT + (ROW_HEIGHT * VISIBLE_ROWS)
 
@@ -461,7 +673,7 @@ function MPT:CreateMainFrame()
 
 	-- Back button (visible only in view mode)
 	local backBtn = self:CreateModernButton(frame, 60, 20, "< Back")
-	backBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -4)
+	backBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", MVP_PANEL_WIDTH + 8, -4)
 	backBtn:SetScript("OnClick", function()
 		MPT:ExitViewMode()
 	end)
@@ -532,7 +744,7 @@ function MPT:CreateMainFrame()
 
 	-- ── Content card (lighter inset area for filter + table) ────
 	local tableCard = CreateFrame("Frame", nil, frame)
-	tableCard:SetPoint("TOPLEFT", frame, "TOPLEFT", MVP_PANEL_WIDTH + 2, -26)
+	tableCard:SetPoint("TOPLEFT", frame, "TOPLEFT", MVP_PANEL_WIDTH, -26)
 	tableCard:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
 	local tcBg = tableCard:CreateTexture(nil, "BACKGROUND")
 	tcBg:SetAllPoints()
@@ -621,7 +833,7 @@ function MPT:CreateFilterBar(parent)
 	favBtn:SetScript("OnEnter", function()
 		if not MPT.showFavouritesOnly then
 			favIcon:SetDesaturated(false)
-			favIcon:SetVertexColor(C.accent[1], C.accent[2], C.accent[3])
+			favIcon:SetVertexColor(1, 0.85, 0)    -- fixed gold (theme-independent)
 		end
 	end)
 	favBtn:SetScript("OnLeave", function()
@@ -799,7 +1011,7 @@ function MPT:CreateRow(parent, index)
 	favBar:SetWidth(3)
 	favBar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
 	favBar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-	favBar:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 0.8)
+	favBar:SetColorTexture(1, 0.85, 0, 0.8)    -- fixed gold (theme-independent)
 	favBar:Hide()
 	row.favBar = favBar
 
@@ -831,7 +1043,7 @@ function MPT:CreateRow(parent, index)
 	mvpStar:SetSize(16, 16)
 	mvpStar:SetPoint("CENTER", row, "LEFT", mvpOff + mvpW / 2, 0)
 	mvpStar:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
-	mvpStar:SetVertexColor(C.accent[1], C.accent[2], C.accent[3])
+	mvpStar:SetVertexColor(1, 0.85, 0)    -- fixed gold (theme-independent)
 	mvpStar:Hide()
 	row.mvpStar = mvpStar
 
@@ -1290,7 +1502,7 @@ function MPT:PopulateRow(row, run)
 	row.cells[7]:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
 
 	-- Level column — green
-	row.cells[3]:SetTextColor(0.2, 0.8, 0.2)
+	row.cells[3]:SetTextColor(C.levelText[1], C.levelText[2], C.levelText[3])
 
 	-- Bonus text color from heatmap
 	local hr, hg, hb = self:GetBonusColor(run.bonus, run.onTime)
@@ -1328,25 +1540,23 @@ local MVP_BUBBLE_SPACING = 3
 function MPT:CreateMvpsSidePanel(parent, padding, tableCard)
 	local panel = CreateFrame("Frame", nil, parent)
 	panel:SetWidth(MVP_PANEL_WIDTH)
-	-- Left side, part of dark shell
-	panel:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -4)
+	-- Left side, full height
+	panel:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
 	panel:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 0)
 
-	-- Panel background (matches dark shell)
+	-- Panel background (full height, covers title bar area on the left)
+	local SCROLL_BAR_WIDTH = 4
 	local bg = panel:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(C.bg[1], C.bg[2], C.bg[3], 1)
-	bg:SetDrawLayer("BACKGROUND", 2)
+	bg:SetColorTexture(C.mvpPanelBg[1], C.mvpPanelBg[2], C.mvpPanelBg[3], 1)
+	bg:SetDrawLayer("BACKGROUND", 5)
 
-	-- Header bar (blends with dark shell)
-	local SCROLL_BAR_WIDTH = 4
+	-- Header bar
 	local header = CreateFrame("Frame", nil, panel)
-	header:SetPoint("TOPLEFT", panel, "TOPLEFT", 6, -4)
-	header:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -6 - SCROLL_BAR_WIDTH - 2, -4)
+	header:SetPoint("TOPLEFT", panel, "TOPLEFT", 6, -2)
+	header:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -6 - SCROLL_BAR_WIDTH - 2, -2)
 	header:SetHeight(HEADER_HEIGHT)
-	local headerBg = header:CreateTexture(nil, "BACKGROUND", nil, 3)
-	headerBg:SetAllPoints()
-	headerBg:SetColorTexture(C.bg[1], C.bg[2], C.bg[3], 1)
+	-- No header background — sits in the title bar zone, uses main bg behind it
 
 	local title = header:CreateFontString(nil, "OVERLAY", "MPTFont_Header")
 	title:SetPoint("LEFT", header, "LEFT", 10, 0)
@@ -1363,8 +1573,83 @@ function MPT:CreateMvpsSidePanel(parent, padding, tableCard)
 	panel.importBtn = importBtn
 	self.mvpImportBtn = importBtn
 
+	-- Search bar
+	local searchBar = CreateFrame("Frame", nil, panel)
+	searchBar:SetPoint("TOPLEFT", panel, "TOPLEFT", 6, -(HEADER_HEIGHT + 6))
+	searchBar:SetPoint("RIGHT", panel, "RIGHT", -6 - SCROLL_BAR_WIDTH - 2, 0)
+	searchBar:SetHeight(22)
+
+	local searchBg = searchBar:CreateTexture(nil, "BACKGROUND", nil, 3)
+	searchBg:SetAllPoints()
+	searchBg:SetColorTexture(C.mvpInputBg[1], C.mvpInputBg[2], C.mvpInputBg[3], 1)
+
+	local searchBox = CreateFrame("EditBox", "MPTMvpSearch", searchBar)
+	searchBox:SetPoint("TOPLEFT", 6, -2)
+	searchBox:SetPoint("BOTTOMRIGHT", -18, 2)
+	searchBox:SetAutoFocus(false)
+	searchBox:SetFontObject("MPTFont_Cell")
+
+	-- Placeholder text
+	local placeholder = searchBar:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+	placeholder:SetPoint("LEFT", searchBar, "LEFT", 6, 0)
+	placeholder:SetText("Search...")
+	placeholder:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3], 0.6)
+
+	-- Clear X button
+	local clearBtn = CreateFrame("Button", nil, searchBar)
+	clearBtn:SetSize(14, 14)
+	clearBtn:SetPoint("RIGHT", searchBar, "RIGHT", -4, 0)
+	local clearLabel = clearBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+	clearLabel:SetPoint("CENTER", 0, 0)
+	clearLabel:SetText("x")
+	clearLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	clearBtn:SetScript("OnEnter", function()
+		clearLabel:SetTextColor(C.dangerHover[1], C.dangerHover[2], C.dangerHover[3])
+	end)
+	clearBtn:SetScript("OnLeave", function()
+		clearLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	end)
+	clearBtn:SetScript("OnClick", function()
+		searchBox:SetText("")
+		searchBox:ClearFocus()
+		clearBtn:Hide()
+		MPT:RefreshMvpsSidePanel()
+	end)
+	clearBtn:Hide()
+
+	searchBox:SetScript("OnTextChanged", function(self)
+		local text = self:GetText()
+		if text ~= "" then
+			clearBtn:Show()
+			placeholder:Hide()
+		else
+			clearBtn:Hide()
+			placeholder:Show()
+		end
+		MPT:RefreshMvpsSidePanel()
+	end)
+	searchBox:SetScript("OnEditFocusGained", function()
+		placeholder:Hide()
+	end)
+	searchBox:SetScript("OnEditFocusLost", function()
+		if searchBox:GetText() == "" then
+			placeholder:Show()
+		end
+	end)
+	searchBox:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+	end)
+	searchBox:SetScript("OnEscapePressed", function(self)
+		self:SetText("")
+		self:ClearFocus()
+		MPT:RefreshMvpsSidePanel()
+	end)
+
+	panel.searchBox = searchBox
+	self.mvpSearchBox = searchBox
+
 	local scrollParent = CreateFrame("Frame", nil, panel)
-	scrollParent:SetPoint("TOPLEFT", panel, "TOPLEFT", 6, -(HEADER_HEIGHT + 8))
+	scrollParent:SetPoint("TOPLEFT", panel, "TOPLEFT", 6, -(HEADER_HEIGHT + 6 + MVP_SEARCH_HEIGHT))
 	scrollParent:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -6 - SCROLL_BAR_WIDTH - 2, 6)
 	scrollParent:SetClipsChildren(true)
 	panel.scrollParent = scrollParent
@@ -1374,11 +1659,11 @@ function MPT:CreateMvpsSidePanel(parent, padding, tableCard)
 	-- Scrollbar track
 	local track = CreateFrame("Frame", nil, panel)
 	track:SetWidth(SCROLL_BAR_WIDTH)
-	track:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -6, -(HEADER_HEIGHT + 4))
+	track:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -6, -(HEADER_HEIGHT + 6 + MVP_SEARCH_HEIGHT))
 	track:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -6, 6)
 	local trackBg = track:CreateTexture(nil, "BACKGROUND")
 	trackBg:SetAllPoints()
-	trackBg:SetColorTexture(C.bg[1], C.bg[2], C.bg[3], 1)
+	trackBg:SetColorTexture(C.mvpPanelBg[1], C.mvpPanelBg[2], C.mvpPanelBg[3], 1)
 	panel.scrollTrack = track
 
 	-- Scrollbar thumb
@@ -1445,14 +1730,14 @@ function MPT:CreateMvpBubble(parent)
 	xLabel:SetPoint("CENTER")
 	xLabel:SetText("x")
 	xLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
-	removeBtn:SetScript("OnEnter", function() xLabel:SetTextColor(1, 0.3, 0.3) end)
+	removeBtn:SetScript("OnEnter", function() xLabel:SetTextColor(C.dangerHover[1], C.dangerHover[2], C.dangerHover[3]) end)
 	removeBtn:SetScript("OnLeave", function() xLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3]) end)
 	bubble.removeBtn = removeBtn
 
 	-- Highlight on hover
 	local hl = bubble:CreateTexture(nil, "HIGHLIGHT")
 	hl:SetAllPoints()
-	hl:SetColorTexture(1, 0.95, 0.8, 0.05)
+	hl:SetColorTexture(C.bubbleHover[1], C.bubbleHover[2], C.bubbleHover[3], C.bubbleHover[4])
 
 	return bubble
 end
@@ -1487,9 +1772,19 @@ function MPT:RefreshMvpsSidePanel()
 	panel.mvpScrollOffset = 0
 	panel.mvpVisibleCount = 0
 
+	-- Filter by search text
+	local searchText = ""
+	if self.mvpSearchBox then
+		searchText = (self.mvpSearchBox:GetText() or ""):lower()
+	end
+
 	local yOff = 0
 	local idx = 0
 	for nameRealm, data in pairs(mvpSource) do
+		-- Apply search filter
+		if searchText ~= "" and not nameRealm:lower():find(searchText, 1, true) then
+			-- skip this MVP
+		else
 		idx = idx + 1
 		local bubble = panel.bubbles[idx]
 		if not bubble then
@@ -1503,9 +1798,9 @@ function MPT:RefreshMvpsSidePanel()
 
 		-- Alternating background
 		if idx % 2 == 0 then
-			bubble.bg:SetColorTexture(C.rowAlt[1], C.rowAlt[2], C.rowAlt[3], 1)
+			bubble.bg:SetColorTexture(C.mvpRowAlt[1], C.mvpRowAlt[2], C.mvpRowAlt[3], 1)
 		else
-			bubble.bg:SetColorTexture(C.rowBase[1], C.rowBase[2], C.rowBase[3], 1)
+			bubble.bg:SetColorTexture(C.mvpRowBase[1], C.mvpRowBase[2], C.mvpRowBase[3], 1)
 		end
 
 		-- Resolve class: stored in MVP data, or look up from run history
@@ -1585,6 +1880,7 @@ function MPT:RefreshMvpsSidePanel()
 
 		bubble:Show()
 		yOff = yOff + MVP_BUBBLE_HEIGHT + MVP_BUBBLE_SPACING
+		end -- else (search filter)
 	end
 
 	panel.mvpVisibleCount = idx
@@ -1599,7 +1895,7 @@ function MPT:RefreshMvpsSidePanel()
 		bubble:ClearAllPoints()
 		bubble:SetPoint("TOPLEFT", panel.scrollParent, "TOPLEFT", 0, 0)
 		bubble:SetPoint("RIGHT", panel.scrollParent, "RIGHT", 0, 0)
-		bubble.bg:SetColorTexture(C.headerBg[1], C.headerBg[2], C.headerBg[3], 1)
+		bubble.bg:SetColorTexture(C.mvpRowBase[1], C.mvpRowBase[2], C.mvpRowBase[3], 1)
 		bubble.leftBar:SetColorTexture(C.divider[1], C.divider[2], C.divider[3], 1)
 		bubble.nameText:SetText("No MVPs yet")
 		bubble.nameText:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
@@ -1710,7 +2006,7 @@ function MPT:CreateHelpPanel()
 	addLine("Click LINK or DESC cells to edit them.")
 	addSpacer()
 	addHeader("Favourites")
-	addIconLine("Interface\\COMMON\\FavoritesIcon", C.accent[1], C.accent[2], C.accent[3], "Toggle favourites filter in the toolbar.")
+	addIconLine("Interface\\COMMON\\FavoritesIcon", 1, 0.85, 0, "Toggle favourites filter in the toolbar.")
 	addLine("Favourited runs show a gold accent bar.")
 	addSpacer()
 	addHeader("Filters")
@@ -1758,6 +2054,7 @@ function MPT:ToggleHelpPanel()
 			self.helpLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
 		end
 	else
+		self:HideAllPopups()
 		self.helpPanel:Show()
 		if self.helpLabel then
 			self.helpLabel:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
@@ -1769,7 +2066,7 @@ end
 
 function MPT:ShowRowContextMenu(row)
 	if not row.runData then return end
-	if self.rowContextMenu then self.rowContextMenu:Hide() end
+	self:HideAllPopups()
 
 	local runId = row.runData.id
 	local menu = CreateFrame("Frame", nil, self.mainFrame)
@@ -1812,7 +2109,7 @@ function MPT:ShowRowContextMenu(row)
 		MPT:RefreshTable()
 	end)
 
-	createMenuBtn(-24, "Delete Run", {1, 0.4, 0.4}, function()
+	createMenuBtn(-24, "Delete Run", {C.dangerText[1], C.dangerText[2], C.dangerText[3]}, function()
 		MPT:ShowDeleteRunConfirm(runId)
 	end)
 
@@ -1850,14 +2147,14 @@ function MPT:ShowDeleteRunConfirm(runId)
 		text:SetPoint("TOP", dialog, "TOP", 0, -18)
 		text:SetWidth(270)
 		text:SetJustifyH("CENTER")
-		text:SetTextColor(0.92, 0.90, 0.84)
+		text:SetTextColor(C.textNeutral[1], C.textNeutral[2], C.textNeutral[3])
 		dialog.text = text
 
 		local yesBtn = self:CreateModernButton(dialog, 100, 26, "Yes, Delete")
 		yesBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -8, 14)
-		yesBtn.label:SetTextColor(1, 0.4, 0.4)
+		yesBtn.label:SetTextColor(C.dangerText[1], C.dangerText[2], C.dangerText[3])
 		yesBtn:SetScript("OnEnter", function(self)
-			self.bg:SetColorTexture(0.25, 0.10, 0.08, 1)
+			self.bg:SetColorTexture(C.dangerBg[1], C.dangerBg[2], C.dangerBg[3], 1)
 		end)
 		yesBtn:SetScript("OnLeave", function(self)
 			self.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
@@ -1896,10 +2193,10 @@ function MPT:ToggleFavouritesFilter()
 	self.showFavouritesOnly = not self.showFavouritesOnly
 	if self.showFavouritesOnly then
 		self.favToggleIcon:SetDesaturated(false)
-		self.favToggleIcon:SetVertexColor(C.accent[1], C.accent[2], C.accent[3])
+		self.favToggleIcon:SetVertexColor(1, 0.85, 0)    -- fixed gold
 	else
 		self.favToggleIcon:SetDesaturated(true)
-		self.favToggleIcon:SetVertexColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		self.favToggleIcon:SetVertexColor(0.5, 0.5, 0.5)    -- fixed muted grey
 	end
 	self:ApplyFilters()
 end
@@ -2137,6 +2434,7 @@ function MPT:ToggleFilterPopup()
 		self.filterPopup:Hide()
 		self:ResetFilterBtnStyle()
 	else
+		self:HideAllPopups()
 		self:PopulateFilterDropdowns()
 		self.filterPopup:Show()
 		if self.filterBtn then
@@ -2146,13 +2444,275 @@ function MPT:ToggleFilterPopup()
 	end
 end
 
+-- ── MVP join notification ────────────────────────────────────────
+
+function MPT:CreateNotificationFrame()
+	if self.notifFrame then return self.notifFrame end
+
+	local f = CreateFrame("Frame", "MPTNotification", UIParent)
+	f:SetFrameStrata("HIGH")
+	f:SetClampedToScreen(true)
+
+	-- Restore saved position
+	local pos = self.db.global.notificationPos
+	if pos then
+		f:SetPoint(pos.point or "TOP", UIParent, pos.point or "TOP", pos.x or 0, pos.y or -200)
+	else
+		f:SetPoint("TOP", UIParent, "TOP", 0, -200)
+	end
+
+	-- Background
+	local bg = f:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(C.bg[1], C.bg[2], C.bg[3], 0.95)
+
+	-- Timer bar (gold line at top, shrinks over time)
+	local timerBar = f:CreateTexture(nil, "ARTWORK")
+	timerBar:SetHeight(2)
+	timerBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+	timerBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+	timerBar:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 0.8)
+	f.timerBar = timerBar
+
+	-- Content container
+	f.lines = {}
+	f:SetWidth(260)
+	f:EnableMouse(true)
+
+	-- Hover: pause timer bar and fade
+	f:SetScript("OnEnter", function()
+		if f.fadeTimer then f.fadeTimer:Cancel() end
+		f:SetScript("OnUpdate", nil)
+		f:SetAlpha(1)
+		-- Reset bar to full
+		f.timerBar:ClearAllPoints()
+		f.timerBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+		f.timerBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+	end)
+	f:SetScript("OnLeave", function()
+		MPT:StartNotificationTimer()
+	end)
+
+	f:Hide()
+	self.notifFrame = f
+	return f
+end
+
+function MPT:ShowMvpJoinNotification(mvpList)
+	local f = self:CreateNotificationFrame()
+
+	-- Cancel any existing timer/fade
+	if f.fadeTimer then f.fadeTimer:Cancel() end
+	f:SetAlpha(1)
+
+	-- Clear old lines
+	for _, line in ipairs(f.lines) do
+		line:Hide()
+	end
+
+	local PADDING = 10
+	local yOff = -PADDING - 2  -- below top accent line
+
+	-- Header: crown icon + "MVP joined"
+	local headerText = #mvpList == 1 and "MVP joined" or "MVPs joined"
+	local header = f.lines[1]
+	if not header then
+		header = f:CreateFontString(nil, "OVERLAY", "MPTFont_Header")
+		f.lines[1] = header
+	end
+	header:ClearAllPoints()
+	header:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 2, yOff)
+	header:SetText(headerText)
+	header:Show()
+	yOff = yOff - 16
+
+	local lineIdx = 2
+	for _, mvp in ipairs(mvpList) do
+		-- Name line (class colored)
+		local nameLine = f.lines[lineIdx]
+		if not nameLine then
+			nameLine = f:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+			f.lines[lineIdx] = nameLine
+		end
+		nameLine:ClearAllPoints()
+		nameLine:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 4, yOff)
+		nameLine:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
+		nameLine:SetJustifyH("LEFT")
+
+		local r, g, b = self:GetClassColor(mvp.class)
+		nameLine:SetText(mvp.name)
+		nameLine:SetTextColor(r, g, b)
+		nameLine:Show()
+		lineIdx = lineIdx + 1
+		yOff = yOff - 15
+
+		-- Note line (if exists)
+		if mvp.note and mvp.note ~= "" then
+			local noteLine = f.lines[lineIdx]
+			if not noteLine then
+				noteLine = f:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+				f.lines[lineIdx] = noteLine
+			end
+			noteLine:ClearAllPoints()
+			noteLine:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 8, yOff)
+			noteLine:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
+			noteLine:SetJustifyH("LEFT")
+			noteLine:SetWordWrap(true)
+			noteLine:SetText(mvp.note)
+			noteLine:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+			noteLine:Show()
+			lineIdx = lineIdx + 1
+			local noteHeight = noteLine:GetStringHeight() or 12
+			yOff = yOff - noteHeight - 2
+		end
+
+		yOff = yOff - 4  -- spacing between MVPs
+	end
+
+	f:SetHeight(math.abs(yOff) + PADDING)
+	f:Show()
+
+	-- Play subtle sound (if enabled)
+	if self.db.global.mvpSound ~= false then
+		PlaySound(SOUNDKIT.IG_PLAYER_INVITE)
+	end
+
+	-- Start dismiss timer
+	self:StartNotificationTimer()
+end
+
+local NOTIF_TIMER_DURATION = 6
+local NOTIF_FADE_DURATION = 1.5
+
+function MPT:StartNotificationTimer()
+	local f = self.notifFrame
+	if not f then return end
+
+	if f.fadeTimer then f.fadeTimer:Cancel() end
+
+	-- Animate the timer bar shrinking from right to left
+	local barElapsed = 0
+	f.timerBar:ClearAllPoints()
+	f.timerBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+	f.timerBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+
+	f:SetScript("OnUpdate", function(self, dt)
+		barElapsed = barElapsed + dt
+
+		if barElapsed <= NOTIF_TIMER_DURATION then
+			-- Shrink the bar
+			local pct = 1 - (barElapsed / NOTIF_TIMER_DURATION)
+			local barWidth = f:GetWidth() * pct
+			f.timerBar:ClearAllPoints()
+			f.timerBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+			f.timerBar:SetWidth(math.max(barWidth, 0.1))
+		else
+			-- Fade out
+			local fadeElapsed = barElapsed - NOTIF_TIMER_DURATION
+			local alpha = 1 - (fadeElapsed / NOTIF_FADE_DURATION)
+			if alpha <= 0 then
+				self:Hide()
+				self:SetAlpha(1)
+				self:SetScript("OnUpdate", nil)
+			else
+				self:SetAlpha(alpha)
+			end
+		end
+	end)
+end
+
+-- Preview frame for positioning
+function MPT:ShowNotificationPreview()
+	local f = self:CreateNotificationFrame()
+
+	-- Cancel any existing timer/fade
+	if f.fadeTimer then f.fadeTimer:Cancel() end
+	f:SetScript("OnUpdate", nil)
+	f:SetAlpha(1)
+
+	-- Clear old lines
+	for _, line in ipairs(f.lines) do
+		line:Hide()
+	end
+
+	local PADDING = 10
+	local yOff = -PADDING - 2
+
+	local header = f.lines[1]
+	if not header then
+		header = f:CreateFontString(nil, "OVERLAY", "MPTFont_Header")
+		f.lines[1] = header
+	end
+	header:ClearAllPoints()
+	header:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 2, yOff)
+	header:SetText("MVP joined")
+	header:Show()
+	yOff = yOff - 16
+
+	local nameLine = f.lines[2]
+	if not nameLine then
+		nameLine = f:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		f.lines[2] = nameLine
+	end
+	nameLine:ClearAllPoints()
+	nameLine:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 4, yOff)
+	nameLine:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
+	nameLine:SetJustifyH("LEFT")
+	nameLine:SetText("Preview-Silvermoon")
+	local pR, pG, pB = self:GetClassColor("PALADIN")
+	nameLine:SetTextColor(pR, pG, pB)
+	nameLine:Show()
+	yOff = yOff - 15
+
+	local noteLine = f.lines[3]
+	if not noteLine then
+		noteLine = f:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+		f.lines[3] = noteLine
+	end
+	noteLine:ClearAllPoints()
+	noteLine:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 8, yOff)
+	noteLine:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
+	noteLine:SetJustifyH("LEFT")
+	noteLine:SetText("Drag to reposition")
+	noteLine:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	noteLine:Show()
+	yOff = yOff - 14
+
+	f:SetHeight(math.abs(yOff) + PADDING)
+
+	-- Make draggable
+	f:SetMovable(true)
+	f:RegisterForDrag("LeftButton")
+	f:SetScript("OnDragStart", function(self) self:StartMoving() end)
+	f:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		-- Save position
+		local point, _, _, x, y = self:GetPoint(1)
+		MPT.db.global.notificationPos = { point = point, x = x, y = y }
+	end)
+
+	self.notifPreviewActive = true
+	f:Show()
+end
+
+function MPT:HideNotificationPreview()
+	local f = self.notifFrame
+	if not f then return end
+
+	f:SetMovable(false)
+	f:SetScript("OnDragStart", nil)
+	f:SetScript("OnDragStop", nil)
+	f:Hide()
+	self.notifPreviewActive = false
+end
+
 -- ── Options panel ────────────────────────────────────────────────
 
 function MPT:CreateOptionsPanel()
 	if self.optionsPanel then return end
 
 	local panel = CreateFrame("Frame", "MPTOptionsPanel", self.mainFrame)
-	panel:SetSize(220, 170)
+	panel:SetSize(220, 290)
 	panel:SetPoint("TOPRIGHT", self.optionsBtn, "BOTTOMRIGHT", 0, -4)
 	panel:SetFrameStrata("DIALOG")
 
@@ -2168,10 +2728,73 @@ function MPT:CreateOptionsPanel()
 	end
 	panel.shareCheck = shareCheck
 
-	-- Divider
+	-- MVP Notifications checkbox
+	local notifCheck = self:CreateModernCheckbox(panel, "MVP Join Alerts")
+	notifCheck:SetPoint("TOPLEFT", shareCheck, "BOTTOMLEFT", 0, -6)
+	notifCheck._onToggle = function(val)
+		MPT.db.global.mvpNotifications = val
+	end
+	panel.notifCheck = notifCheck
+
+	-- Notification Sound checkbox
+	local soundCheck = self:CreateModernCheckbox(panel, "Notification Sound")
+	soundCheck:SetPoint("TOPLEFT", notifCheck, "BOTTOMLEFT", 0, -6)
+	soundCheck._onToggle = function(val)
+		MPT.db.global.mvpSound = val
+	end
+	panel.soundCheck = soundCheck
+
+	-- Move Notification button
+	local moveBtn = self:CreateModernButton(panel, 190, 20, "Move Notification")
+	moveBtn:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", -2, -8)
+	moveBtn:SetScript("OnClick", function()
+		if MPT.notifPreviewActive then
+			MPT:HideNotificationPreview()
+			moveBtn.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		else
+			MPT:ShowNotificationPreview()
+			moveBtn.label:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+		end
+	end)
+	panel.moveNotifBtn = moveBtn
+
+	-- Theme divider
+	local themeDiv = panel:CreateTexture(nil, "ARTWORK")
+	themeDiv:SetHeight(1)
+	themeDiv:SetPoint("TOPLEFT", moveBtn, "BOTTOMLEFT", 0, -10)
+	themeDiv:SetPoint("RIGHT", panel, "RIGHT", -12, 0)
+	themeDiv:SetColorTexture(C.divider[1], C.divider[2], C.divider[3], 1)
+
+	-- Theme label
+	local themeLabel = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Header")
+	themeLabel:SetPoint("TOPLEFT", themeDiv, "BOTTOMLEFT", 2, -8)
+	themeLabel:SetText("Theme")
+
+	-- Theme dropdown (custom, matches filter dropdowns)
+	local themeDD = self:CreateDropdown(panel, 190, "Coffee")
+	themeDD._noDefault = true
+	themeDD:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -4)
+
+	-- Build items from THEME_LIST
+	local themeItems = {}
+	local currentThemeName = "Coffee"
+	for _, entry in ipairs(THEME_LIST) do
+		themeItems[#themeItems + 1] = { value = entry.key, display = entry.name }
+		if entry.key == (self.db.global.theme or "coffee") then
+			currentThemeName = entry.name
+		end
+	end
+	themeDD:SetItems(themeItems)
+	themeDD:SetValue(self.db.global.theme or "coffee", currentThemeName)
+	themeDD._onSelect = function(value, display)
+		MPT:ApplyTheme(value)
+	end
+	panel.themeDD = themeDD
+
+	-- Divider before reset
 	local div = panel:CreateTexture(nil, "ARTWORK")
 	div:SetHeight(1)
-	div:SetPoint("TOPLEFT", shareCheck, "BOTTOMLEFT", -2, -12)
+	div:SetPoint("TOPLEFT", themeDD, "BOTTOMLEFT", 0, -10)
 	div:SetPoint("RIGHT", panel, "RIGHT", -12, 0)
 	div:SetColorTexture(C.divider[1], C.divider[2], C.divider[3], 1)
 
@@ -2194,7 +2817,7 @@ function MPT:CreateOptionsPanel()
 	-- Reset button
 	local resetBtn = self:CreateModernButton(panel, 190, 24, "Reset Selected")
 	resetBtn:SetPoint("TOPLEFT", resetMvpsCheck, "BOTTOMLEFT", -2, -10)
-	resetBtn.label:SetTextColor(1, 0.4, 0.4)
+	resetBtn.label:SetTextColor(C.dangerText[1], C.dangerText[2], C.dangerText[3])
 	resetBtn:SetScript("OnClick", function()
 		local runs = panel.resetRunsCheck:GetChecked()
 		local mvps = panel.resetMvpsCheck:GetChecked()
@@ -2203,7 +2826,7 @@ function MPT:CreateOptionsPanel()
 		end
 	end)
 	resetBtn:SetScript("OnEnter", function(self)
-		self.bg:SetColorTexture(0.25, 0.10, 0.08, 1)
+		self.bg:SetColorTexture(C.dangerBg[1], C.dangerBg[2], C.dangerBg[3], 1)
 	end)
 	resetBtn:SetScript("OnLeave", function(self)
 		self.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
@@ -2220,8 +2843,14 @@ function MPT:ToggleOptionsPanel()
 
 	if self.optionsPanel:IsShown() then
 		self.optionsPanel:Hide()
+		if self.notifPreviewActive then
+			self:HideNotificationPreview()
+		end
 	else
+		self:HideAllPopups()
 		self.optionsPanel.shareCheck:SetChecked(self.db.global.shareTable)
+		self.optionsPanel.notifCheck:SetChecked(self.db.global.mvpNotifications ~= false)
+		self.optionsPanel.soundCheck:SetChecked(self.db.global.mvpSound ~= false)
 		self.optionsPanel:Show()
 	end
 end
@@ -2254,9 +2883,9 @@ function MPT:ShowResetConfirmDialog(resetRuns, resetMvps)
 
 		local yesBtn = self:CreateModernButton(dialog, 100, 26, "Yes, Delete")
 		yesBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -8, 16)
-		yesBtn.label:SetTextColor(1, 0.4, 0.4)
+		yesBtn.label:SetTextColor(C.dangerText[1], C.dangerText[2], C.dangerText[3])
 		yesBtn:SetScript("OnEnter", function(self)
-			self.bg:SetColorTexture(0.25, 0.10, 0.08, 1)
+			self.bg:SetColorTexture(C.dangerBg[1], C.dangerBg[2], C.dangerBg[3], 1)
 		end)
 		yesBtn:SetScript("OnLeave", function(self)
 			self.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
@@ -2291,14 +2920,52 @@ function MPT:UpdateViewModeUI()
 
 	if isViewing then
 		local displayName = self.viewingPlayer or "Unknown"
-		local shortName = displayName:match("^(.+)%-") or displayName
-		self.mainTitle:SetText(shortName .. "'s M+ Table")
+		local shortName = displayName:match("^([^%-]+)") or displayName
+		-- Look up class from viewed data or local MVP list
+		local viewClass = nil
+		if self.viewingData and self.viewingData.runs then
+			for _, run in ipairs(self.viewingData.runs) do
+				for _, m in ipairs(run.members or {}) do
+					if m.name == shortName then
+						viewClass = m.class
+						break
+					end
+				end
+				if viewClass then break end
+			end
+		end
+		if not viewClass then
+			local matched = self:MatchMvpName(displayName) or self:MatchMvpName(shortName)
+			if matched and self.db.global.mvps[matched] then
+				viewClass = self.db.global.mvps[matched].class
+			end
+		end
+		local r, g, b = self:GetClassColor(viewClass)
+		local hex = string.format("|cFF%02x%02x%02x", r * 255, g * 255, b * 255)
+		local goldHex = string.format("|cFF%02x%02x%02x", C.accent[1] * 255, C.accent[2] * 255, C.accent[3] * 255)
+		-- Create a view title overlay frame (renders above MVP panel)
+		if not self.viewTitleFrame then
+			local vtf = CreateFrame("Frame", nil, self.mainFrame)
+			vtf:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", MVP_PANEL_WIDTH, 0)
+			vtf:SetPoint("TOPRIGHT", self.mainFrame, "TOPRIGHT", 0, 0)
+			vtf:SetHeight(32)
+			vtf:SetFrameLevel(self.mainFrame:GetFrameLevel() + 20)
+			self.viewTitle = vtf:CreateFontString(nil, "OVERLAY", "MPTFont_Title")
+			self.viewTitle:SetPoint("CENTER", vtf, "CENTER", 0, 4)
+			self.viewTitleFrame = vtf
+		end
+		-- Neutral base color so inline codes work
+		self.viewTitle:SetTextColor(C.textNeutral[1], C.textNeutral[2], C.textNeutral[3])
+		self.viewTitle:SetText(hex .. shortName .. "'s |r" .. goldHex .. "Table|r")
+		self.viewTitleFrame:Show()
+		self.mainTitle:Hide()
 		self.backBtn:Show()
 		if self.helpBtn then self.helpBtn:Hide() end
 		if self.optionsBtn then self.optionsBtn:Hide() end
 		if self.optionsPanel then self.optionsPanel:Hide() end
 	else
-		self.mainTitle:SetText("Mythic Memories")
+		self.mainTitle:Show()
+		if self.viewTitleFrame then self.viewTitleFrame:Hide() end
 		self.backBtn:Hide()
 		if self.helpBtn then self.helpBtn:Show() end
 		if self.optionsBtn then self.optionsBtn:Show() end

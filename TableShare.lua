@@ -48,6 +48,9 @@ function MPT:OnCommReceived(prefix, message, distribution, sender)
 		self:OnTableResponseCompressed(sender, data)
 	elseif msgType == "TABLE_DENIED" then
 		self:OnTableDenied(sender)
+	-- Party MVP browse (lightweight name-only list)
+	elseif msgType == "BROWSE_MVPS" then
+		self:OnBrowseMvpsReceived(sender, data)
 	end
 end
 
@@ -345,6 +348,92 @@ function MPT:IsViewingRemote()
 	return self.viewingPlayer ~= nil
 end
 
+-- ── Party MVP browsing (name-only list for Group Finder crowns) ──
+
+-- Transient cache: { ["Sender-Realm"] = { ["MvpName-Realm"] = true, ... } }
+MPT.partyMvpCache = {}
+
+function MPT:BroadcastBrowseMvps()
+	if not IsInGroup() then return end
+
+	local mvps = {}
+	for nameRealm, data in pairs(self.db.global.mvps or {}) do
+		mvps[nameRealm] = data.note or ""
+	end
+
+	local msg = self:Serialize("BROWSE_MVPS", { mvps = mvps })
+	self:SendCommMessage(COMM_PREFIX, msg, "PARTY")
+end
+
+function MPT:OnBrowseMvpsReceived(sender, data)
+	if not data then return end
+
+	-- Support new format (mvps = {name=note}) and old format (names = {list})
+	if data.mvps then
+		self.partyMvpCache[sender] = data.mvps
+	elseif data.names then
+		local lookup = {}
+		for _, nameRealm in ipairs(data.names) do
+			lookup[nameRealm] = ""
+		end
+		self.partyMvpCache[sender] = lookup
+	end
+end
+
+function MPT:PurgePartyMvpCache()
+	-- Remove entries for players no longer in the group
+	if not IsInGroup() then
+		self.partyMvpCache = {}
+		return
+	end
+
+	local groupMembers = {}
+	local prefix = IsInRaid() and "raid" or "party"
+	local count = GetNumGroupMembers()
+	for i = 1, count do
+		local unit = (prefix == "party") and (i < count and ("party" .. i) or "player") or ("raid" .. i)
+		local name, realm = UnitName(unit)
+		if name then
+			if realm and realm ~= "" then
+				groupMembers[name .. "-" .. realm] = true
+			else
+				groupMembers[name] = true
+			end
+		end
+	end
+
+	for sender in pairs(self.partyMvpCache) do
+		-- Match sender (may or may not have realm) against group members
+		if not groupMembers[sender] then
+			local baseName = sender:match("^([^%-]+)")
+			if not groupMembers[baseName] then
+				self.partyMvpCache[sender] = nil
+			end
+		end
+	end
+end
+
+function MPT:CheckPartyMvp(leaderName)
+	-- Returns senderName, note (or nil, nil)
+	if not leaderName then return nil, nil end
+
+	for sender, mvpList in pairs(self.partyMvpCache) do
+		-- Check exact match
+		if mvpList[leaderName] ~= nil then
+			return sender, mvpList[leaderName]
+		end
+		-- Check base name match (leader might be "Name" or "Name-Realm")
+		for mvpName, note in pairs(mvpList) do
+			local mvpBase = mvpName:match("^([^%-]+)")
+			local leaderBase = leaderName:match("^([^%-]+)")
+			if mvpBase and leaderBase and mvpBase == leaderBase then
+				return sender, note
+			end
+		end
+	end
+	return nil, nil
+end
+
 -- ── Unit menu hook (TWW 11.x Menu API) ──────────────────────────
 
 function MPT:HookUnitMenus()
@@ -385,13 +474,14 @@ function MPT:HookUnitMenus()
 			local unit = owner and not owner:IsForbidden() and owner.GetAttribute and owner:GetAttribute("unit")
 			local _, class = UnitClass(unit or "mouseover")
 
-			if MPT:IsMvp(nameRealm) then
+			local matchedMvp = MPT:MatchMvpName(nameRealm)
+			if matchedMvp then
 				rootDescription:CreateButton("Remove from MVP List", function()
-					local note = MPT:GetMvpNote(nameRealm)
+					local note = MPT:GetMvpNote(matchedMvp)
 					if note and note ~= "" then
-						MPT:ShowRemoveMvpConfirm(nameRealm, class)
+						MPT:ShowRemoveMvpConfirm(matchedMvp, class)
 					else
-						MPT:RemoveMvp(nameRealm)
+						MPT:RemoveMvp(matchedMvp)
 						MPT:OnMvpChanged()
 					end
 				end)

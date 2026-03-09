@@ -26,11 +26,95 @@ end
 
 function MPT:OnEnable()
 	self:Print("Mythic Memories loaded. Type /mm to view your run history.")
+	-- Apply saved theme
+	if self.ApplyTheme and self.db.global.theme then
+		self:ApplyTheme(self.db.global.theme)
+	end
 	self:TableShare_Enable()
 	self:DataTracker_Enable()
 	self:MvpSync_Enable()
 	self:GroupFinderHook_Enable()
 	self:HookUnitMenus()
+	self:PartyMvpBrowse_Enable()
+end
+
+-- ── Party MVP browse (crown sharing for Group Finder) ───────────
+
+function MPT:PartyMvpBrowse_Enable()
+	self:RegisterEvent("GROUP_ROSTER_UPDATE", "OnGroupRosterUpdate")
+	self:RegisterEvent("GROUP_LEFT", "OnGroupLeft")
+	self.partyMvpMembers = {}  -- track known members to detect joins
+end
+
+function MPT:OnGroupRosterUpdate()
+	-- Purge cache entries for members who left
+	self:PurgePartyMvpCache()
+
+	if not IsInGroup() then
+		self.partyMvpMembers = {}
+		return
+	end
+
+	-- Detect new members and broadcast our list to the party
+	local currentMembers = {}
+	local prefix = IsInRaid() and "raid" or "party"
+	local count = GetNumGroupMembers()
+	local hasNew = false
+
+	for i = 1, count do
+		local unit = (prefix == "party") and (i < count and ("party" .. i) or "player") or ("raid" .. i)
+		local name = UnitName(unit)
+		if name then
+			currentMembers[name] = true
+			if not self.partyMvpMembers[name] then
+				hasNew = true
+			end
+		end
+	end
+
+	if hasNew then
+		-- Check new members for MVP status
+		local mvpJoiners = {}
+		for i = 1, count do
+			local unit = (prefix == "party") and (i < count and ("party" .. i) or "player") or ("raid" .. i)
+			local name, realm = UnitName(unit)
+			local myName = UnitName("player")
+			if name and name ~= myName and not self.partyMvpMembers[name] then
+				if not realm or realm == "" then
+					realm = GetRealmName()
+				end
+				local nameRealm = name .. "-" .. realm
+				local _, class = UnitClass(unit)
+				local matched = self:MatchMvpName(nameRealm) or self:MatchMvpName(name)
+				if matched then
+					local note = self:GetMvpNote(matched)
+					mvpJoiners[#mvpJoiners + 1] = {
+						name = matched,
+						class = class,
+						note = note,
+					}
+				end
+			end
+		end
+
+		self.partyMvpMembers = currentMembers
+
+		if #mvpJoiners > 0 and self.db.global.mvpNotifications ~= false then
+			self:ShowMvpJoinNotification(mvpJoiners)
+		end
+
+		-- Small delay so the new member's addon is ready to receive
+		C_Timer.After(1, function()
+			MPT:BroadcastBrowseMvps()
+		end)
+	else
+		self.partyMvpMembers = currentMembers
+	end
+end
+
+function MPT:OnGroupLeft()
+	self.partyMvpCache = {}
+	self.partyMvpMembers = {}
 end
 
 function MPT:SlashCommand(input)

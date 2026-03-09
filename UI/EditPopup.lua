@@ -1,4 +1,5 @@
 local _, MPT = ...
+local function P() return MPT.C end
 
 -- ── Shared border helper ─────────────────────────────────────
 local function addBorder(parent, point1, rel1, point2, rel2, w, h)
@@ -7,7 +8,7 @@ local function addBorder(parent, point1, rel1, point2, rel2, w, h)
 	line:SetPoint(point2, parent, rel2)
 	if w then line:SetWidth(w) end
 	if h then line:SetHeight(h) end
-	line:SetColorTexture(0.18, 0.17, 0.14, 1)
+	line:SetColorTexture(P().borderColor[1], P().borderColor[2], P().borderColor[3], 1)
 end
 
 -- ── Popup mutual exclusion ─────────────────────────────────────
@@ -23,19 +24,28 @@ function MPT:HideAllPopups()
 	if self.helpPanel then
 		self.helpPanel:Hide()
 		if self.helpLabel then
-			self.helpLabel:SetTextColor(0.55, 0.53, 0.47)
+			self.helpLabel:SetTextColor(P().textMuted[1], P().textMuted[2], P().textMuted[3])
 		end
 	end
 	if self.addNoteDialog then self.addNoteDialog:Hide() end
 	if self.filterPopup then
 		self.filterPopup:Hide()
 		if self.filterBtn then
-			self.filterBtn.bg:SetColorTexture(0.25, 0.24, 0.20, 1)
-			self.filterBtn.label:SetTextColor(0.92, 0.90, 0.84)
+			self.filterBtn.bg:SetColorTexture(P().btnBg[1], P().btnBg[2], P().btnBg[3], 1)
+			self.filterBtn.label:SetTextColor(P().textNeutral[1], P().textNeutral[2], P().textNeutral[3])
 		end
 	end
 	if self.rowContextMenu then self.rowContextMenu:Hide() end
 	if self.deleteRunDialog then self.deleteRunDialog:Hide() end
+	-- Close any open dropdown lists
+	if self._activeDropdown and self._activeDropdown._listFrame then
+		self._activeDropdown._listFrame:Hide()
+		self._activeDropdown = nil
+	end
+	-- Close notification preview if active
+	if self.notifPreviewActive then
+		self:HideNotificationPreview()
+	end
 end
 
 -- ── Shared scrollable multi-line edit area ────────────────────
@@ -47,7 +57,7 @@ local function CreateScrollableEditBox(parent, scrollName, editBoxName, opts)
 
 	local areaBg = area:CreateTexture(nil, "BACKGROUND")
 	areaBg:SetAllPoints()
-	areaBg:SetColorTexture(0.30, 0.29, 0.24, 1)
+	areaBg:SetColorTexture(P().scrollBg[1], P().scrollBg[2], P().scrollBg[3], 1)
 
 	-- Thin border
 	addBorder(area, "TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", nil, 1)
@@ -83,7 +93,7 @@ local function CreateScrollableEditBox(parent, scrollName, editBoxName, opts)
 	track:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -3, 4)
 	local trackBg = track:CreateTexture(nil, "BACKGROUND")
 	trackBg:SetAllPoints()
-	trackBg:SetColorTexture(0.25, 0.24, 0.20, 0.9)
+	trackBg:SetColorTexture(P().btnBg[1], P().btnBg[2], P().btnBg[3], 0.9)
 
 	-- Thumb
 	local thumb = CreateFrame("Frame", nil, track)
@@ -94,7 +104,7 @@ local function CreateScrollableEditBox(parent, scrollName, editBoxName, opts)
 	thumb:SetMovable(true)
 	local thumbTex = thumb:CreateTexture(nil, "OVERLAY")
 	thumbTex:SetAllPoints()
-	thumbTex:SetColorTexture(0.25, 0.24, 0.20, 1)
+	thumbTex:SetColorTexture(P().btnBg[1], P().btnBg[2], P().btnBg[3], 1)
 
 	local function UpdateThumb()
 		local max = scroll:GetVerticalScrollRange()
@@ -202,7 +212,7 @@ function MPT:CreateEditPopup()
 
 	local bg = popup:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
+	bg:SetColorTexture(P().popupBg[1], P().popupBg[2], P().popupBg[3], 1)
 
 	local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	title:SetPoint("TOP", popup, "TOP", 0, -10)
@@ -215,7 +225,7 @@ function MPT:CreateEditPopup()
 	linkContainer:SetPoint("TOPLEFT", popup, "TOPLEFT", 12, -32)
 	local linkContainerBg = linkContainer:CreateTexture(nil, "BACKGROUND")
 	linkContainerBg:SetAllPoints()
-	linkContainerBg:SetColorTexture(0.30, 0.29, 0.24, 1)
+	linkContainerBg:SetColorTexture(P().scrollBg[1], P().scrollBg[2], P().scrollBg[3], 1)
 	-- Border (matching desc/note area)
 	addBorder(linkContainer, "TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", nil, 1)
 	addBorder(linkContainer, "BOTTOMLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "BOTTOMRIGHT", nil, 1)
@@ -324,7 +334,7 @@ function MPT:ShowMvpDropdown(runId, anchorFrame)
 
 			local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
 			highlight:SetAllPoints()
-			highlight:SetColorTexture(1, 0.95, 0.8, 0.05)
+			highlight:SetColorTexture(P().bubbleHover[1], P().bubbleHover[2], P().bubbleHover[3], P().bubbleHover[4])
 
 			dropdown.buttons[i] = btn
 		end
@@ -337,7 +347,7 @@ function MPT:ShowMvpDropdown(runId, anchorFrame)
 		btn.text:SetTextColor(r, g, b)
 
 		btn.check:SetText(isMvp and "x" or "")
-		btn.check:SetTextColor(0, 1, 0)
+		btn.check:SetTextColor(P().checkGreen[1], P().checkGreen[2], P().checkGreen[3])
 
 		btn.nameRealm = nameRealm
 		btn.memberClass = member.class
@@ -379,7 +389,7 @@ function MPT:CreateMvpDropdown()
 
 	local bg = dropdown:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
+	bg:SetColorTexture(P().popupBg[1], P().popupBg[2], P().popupBg[3], 1)
 
 	dropdown:Hide()
 	self.mvpDropdown = dropdown
@@ -410,7 +420,7 @@ function MPT:ShowLinkCopyPopup(url, anchorFrame, isRemote)
 	end
 
 	popup.hint:SetText("Ctrl+C to copy")
-	popup.hint:SetTextColor(0.6, 0.9, 0.6)
+	popup.hint:SetTextColor(P().successDim[1], P().successDim[2], P().successDim[3])
 	popup.hint:SetAlpha(1)
 
 	if isRemote then
@@ -435,7 +445,7 @@ function MPT:CreateLinkCopyPopup()
 
 	local bg = popup:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
+	bg:SetColorTexture(P().popupBg[1], P().popupBg[2], P().popupBg[3], 1)
 
 	-- Custom styled input
 	local container = CreateFrame("Frame", nil, popup)
@@ -443,7 +453,7 @@ function MPT:CreateLinkCopyPopup()
 	container:SetPoint("TOP", popup, "TOP", 0, -5)
 	local containerBg = container:CreateTexture(nil, "BACKGROUND", nil, 1)
 	containerBg:SetAllPoints()
-	containerBg:SetColorTexture(0.30, 0.29, 0.24, 1)
+	containerBg:SetColorTexture(P().scrollBg[1], P().scrollBg[2], P().scrollBg[3], 1)
 	-- Border
 	addBorder(container, "TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", nil, 1)
 	addBorder(container, "BOTTOMLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "BOTTOMRIGHT", nil, 1)
@@ -461,7 +471,7 @@ function MPT:CreateLinkCopyPopup()
 	editBox:SetScript("OnKeyUp", function(self, key)
 		if key == "C" and IsControlKeyDown() then
 			popup.hint:SetText("Copied!")
-			popup.hint:SetTextColor(0.4, 1, 0.4)
+			popup.hint:SetTextColor(P().successText[1], P().successText[2], P().successText[3])
 			popup.hint:SetAlpha(1)
 			C_Timer.After(0.6, function()
 				popup:Hide()
@@ -473,7 +483,7 @@ function MPT:CreateLinkCopyPopup()
 	local hint = popup:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
 	hint:SetPoint("TOP", container, "BOTTOM", 0, -2)
 	hint:SetText("Ctrl+C to copy")
-	hint:SetTextColor(0.6, 0.9, 0.6)
+	hint:SetTextColor(P().successDim[1], P().successDim[2], P().successDim[3])
 	popup.hint = hint
 
 	local warning = popup:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
@@ -482,7 +492,7 @@ function MPT:CreateLinkCopyPopup()
 	warning:SetPoint("RIGHT", popup, "RIGHT", -10, 0)
 	warning:SetJustifyH("CENTER")
 	warning:SetText("Warning: This link is from another player\nand may be malicious.")
-	warning:SetTextColor(1, 0.4, 0.4)
+	warning:SetTextColor(P().dangerText[1], P().dangerText[2], P().dangerText[3])
 	warning:Hide()
 	popup.warning = warning
 
@@ -542,12 +552,12 @@ function MPT:CreateNotePopup()
 
 	local bg = popup:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
+	bg:SetColorTexture(P().popupBg[1], P().popupBg[2], P().popupBg[3], 1)
 
 	local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	title:SetPoint("TOP", popup, "TOP", 0, -8)
 	title:SetWidth(340)
-	title:SetTextColor(0.92, 0.90, 0.84)
+	title:SetTextColor(P().textNeutral[1], P().textNeutral[2], P().textNeutral[3])
 	popup.title = title
 
 	-- Dark inset scrollable text area (same component as description editor)
@@ -562,7 +572,7 @@ function MPT:CreateNotePopup()
 
 	local charCount = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	charCount:SetPoint("BOTTOMRIGHT", noteArea, "BOTTOMRIGHT", 0, -12)
-	charCount:SetTextColor(0.5, 0.5, 0.5)
+	charCount:SetTextColor(P().charCount[1], P().charCount[2], P().charCount[3])
 	popup.charCount = charCount
 
 	local saveBtn = self:CreateModernButton(popup, 70, 22, "Save")
@@ -621,23 +631,23 @@ function MPT:CreateRemoveMvpDialog()
 
 	local bg = dialog:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
+	bg:SetColorTexture(P().popupBg[1], P().popupBg[2], P().popupBg[3], 1)
 
 	local text = dialog:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
 	text:SetPoint("TOP", dialog, "TOP", 0, -16)
 	text:SetWidth(290)
 	text:SetJustifyH("CENTER")
-	text:SetTextColor(0.92, 0.90, 0.84)
+	text:SetTextColor(P().textNeutral[1], P().textNeutral[2], P().textNeutral[3])
 	dialog.text = text
 
 	local yesBtn = self:CreateModernButton(dialog, 100, 26, "Yes, Remove")
 	yesBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -8, 14)
-	yesBtn.label:SetTextColor(1, 0.4, 0.4)
+	yesBtn.label:SetTextColor(P().dangerText[1], P().dangerText[2], P().dangerText[3])
 	yesBtn:SetScript("OnEnter", function(self)
-		self.bg:SetColorTexture(0.25, 0.10, 0.08, 1)
+		self.bg:SetColorTexture(P().dangerBg[1], P().dangerBg[2], P().dangerBg[3], 1)
 	end)
 	yesBtn:SetScript("OnLeave", function(self)
-		self.bg:SetColorTexture(0.25, 0.24, 0.20, 1)
+		self.bg:SetColorTexture(P().btnBg[1], P().btnBg[2], P().btnBg[3], 1)
 	end)
 	yesBtn:SetScript("OnClick", function()
 		if dialog.nameRealm then
@@ -683,13 +693,13 @@ function MPT:CreateAddNoteDialog()
 
 	local bg = dialog:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(0.20, 0.19, 0.16, 1)
+	bg:SetColorTexture(P().popupBg[1], P().popupBg[2], P().popupBg[3], 1)
 
 	local text = dialog:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
 	text:SetPoint("TOP", dialog, "TOP", 0, -20)
 	text:SetWidth(290)
 	text:SetJustifyH("CENTER")
-	text:SetTextColor(0.92, 0.90, 0.84)
+	text:SetTextColor(P().textNeutral[1], P().textNeutral[2], P().textNeutral[3])
 	dialog.text = text
 
 	local yesBtn = self:CreateModernButton(dialog, 80, 26, "Yes")
