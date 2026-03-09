@@ -1955,90 +1955,136 @@ end
 function MPT:CreateHelpPanel()
 	if self.helpPanel then return end
 
+	local COL_WIDTH = 280
+	local COL_GAP = 20
+	local PAD = 14
+	local panelW = PAD + COL_WIDTH + COL_GAP + COL_WIDTH + PAD
+
 	local panel = CreateFrame("Frame", "MPTHelpPanel", self.mainFrame)
-	panel:SetSize(320, 300)
-	panel:SetPoint("TOPLEFT", self.helpBtn, "BOTTOMLEFT", -4, -4)
+	panel:SetSize(panelW, 300)  -- height adjusted below
+	panel:SetPoint("TOPRIGHT", self.helpBtn, "BOTTOMRIGHT", 4, -4)
 	panel:SetFrameStrata("DIALOG")
 
 	local bg = panel:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
 	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
 
-	local yOff = -12
-	local function addHeader(text)
+	-- Two-column layout helpers
+	local yLeft = -PAD
+	local yRight = -PAD
+	local colLeftX = PAD
+	local colRightX = PAD + COL_WIDTH + COL_GAP
+
+	local function addHeader(col, text)
 		local fs = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Header")
-		fs:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+		local x = col == 1 and colLeftX or colRightX
+		local y = col == 1 and yLeft or yRight
+		fs:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
 		fs:SetText(text)
-		yOff = yOff - 16
+		if col == 1 then yLeft = yLeft - 16 else yRight = yRight - 16 end
 	end
-	local function addLine(text)
+
+	local function addLine(col, text)
 		local fs = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
-		fs:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
-		fs:SetWidth(296)
+		local x = col == 1 and colLeftX or colRightX
+		local y = col == 1 and yLeft or yRight
+		fs:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
+		fs:SetWidth(COL_WIDTH)
 		fs:SetJustifyH("LEFT")
 		fs:SetText(text)
 		fs:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
-		yOff = yOff - (fs:GetStringHeight() + 4)
-	end
-	local function addSpacer()
-		yOff = yOff - 6
+		local h = fs:GetStringHeight() + 4
+		if col == 1 then yLeft = yLeft - h else yRight = yRight - h end
 	end
 
-	local function addIconLine(texture, r, g, b, text, desat)
+	local function addSpacer(col)
+		if col == 1 then yLeft = yLeft - 6 else yRight = yRight - 6 end
+	end
+
+	local function addIconLine(col, texture, r, g, b, text, desat)
+		local x = col == 1 and colLeftX or colRightX
+		local y = col == 1 and yLeft or yRight
 		local icon = panel:CreateTexture(nil, "OVERLAY")
 		icon:SetSize(14, 14)
-		icon:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff - 1)
+		icon:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y - 1)
 		icon:SetTexture(texture)
 		if desat then icon:SetDesaturated(true) end
 		icon:SetVertexColor(r, g, b)
 		local fs = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
-		fs:SetPoint("TOPLEFT", panel, "TOPLEFT", 30, yOff)
-		fs:SetWidth(278)
+		fs:SetPoint("TOPLEFT", panel, "TOPLEFT", x + 18, y)
+		fs:SetWidth(COL_WIDTH - 18)
 		fs:SetJustifyH("LEFT")
 		fs:SetText(text)
 		fs:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
-		yOff = yOff - (fs:GetStringHeight() + 4)
+		local h = fs:GetStringHeight() + 4
+		if col == 1 then yLeft = yLeft - h else yRight = yRight - h end
 	end
 
-	addHeader("Table")
-	addLine("Left-click a row to expand per-player stats.")
-	addLine("Right-click a row to favourite/unfavourite it.")
-	addLine("Click LINK or DESC cells to edit them.")
-	addSpacer()
-	addHeader("Favourites")
-	addIconLine("Interface\\COMMON\\FavoritesIcon", 1, 0.85, 0, "Toggle favourites filter in the toolbar.")
-	addLine("Favourited runs show a gold accent bar.")
-	addSpacer()
-	addHeader("Filters")
-	addLine("Use Player/Realm search bars for quick filtering.")
-	addLine("Click Filter for advanced options (dungeon, affix, bonus, role, level).")
-	addSpacer()
-	addHeader("MVPs")
-	addLine("Left-click a name in the tree view to toggle MVP.")
-	addLine("Right-click a name to add MVP with a note.")
-	addLine("MVP list is always visible on the left.")
-	addSpacer()
-	addHeader("Icons")
-	addIconLine("Interface\\GroupFrame\\UI-Group-AssistantIcon", 1, 0.82, 0, "Your MVP")
-	addIconLine("Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.3, 0.7, 1, "Their MVP (viewing shared table)", true)
-	addIconLine("Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.2, 1, 0.2, "Shared MVP (in both lists)", true)
-	addSpacer()
-	addHeader("Sharing")
-	addLine("Right-click a player portrait to view their M+ table or add them as MVP.")
-	addLine("Use Import in the MVP list to save their MVPs.")
-	addSpacer()
-	addHeader("Slash Commands")
-	addLine("/mm — Toggle this window")
-	addSpacer()
+	-- ── LEFT COLUMN ──
+	addHeader(1, "Getting Started")
+	addLine(1, "Mythic Memories automatically records every M+ run you complete with full group and stat tracking.")
+	addSpacer(1)
+
+	addHeader(1, "Run Table")
+	addLine(1, "Left-click a row to expand per-player stats.")
+	addLine(1, "Right-click a row to favourite it.")
+	addLine(1, "Click LINK or DESC to edit them.")
+	addSpacer(1)
+
+	addHeader(1, "Favourites")
+	addIconLine(1, "Interface\\COMMON\\FavoritesIcon", 1, 0.85, 0, "Star in the toolbar filters favourites only.")
+	addLine(1, "Favourited runs show a gold accent bar.")
+	addSpacer(1)
+
+	addHeader(1, "Filters")
+	addLine(1, "Player/Realm search bars for quick filtering.")
+	addLine(1, "Filter button for dungeon, affix, upgrade, role, and level range.")
+	addSpacer(1)
+
+	addHeader(1, "Slash Commands")
+	addLine(1, "/mm — Toggle this window")
+	addLine(1, "/mm mvps — List your MVPs in chat")
+
+	-- ── RIGHT COLUMN ──
+	addHeader(2, "MVP System")
+	addLine(2, "Mark standout players to remember them.")
+	addLine(2, "Left-click a name in stats to toggle MVP.")
+	addLine(2, "Right-click a name to add with a note.")
+	addLine(2, "MVP list is in the side panel on the left.")
+	addSpacer(2)
+
+	addHeader(2, "MVP Icons")
+	addIconLine(2, "Interface\\GroupFrame\\UI-Group-AssistantIcon", 1, 0.82, 0, "Your MVP")
+	addIconLine(2, "Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.3, 0.7, 1, "Their MVP (shared table)", true)
+	addIconLine(2, "Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.2, 1, 0.2, "Shared MVP (both lists)", true)
+	addSpacer(2)
+
+	addHeader(2, "Notifications")
+	addLine(2, "MVPs joining your party trigger a popup. Toggle sound in Options.")
+	addSpacer(2)
+
+	addHeader(2, "Table Sharing")
+	addLine(2, "Right-click a portrait to view their runs or add them as MVP.")
+	addLine(2, "Import button saves their MVPs to your list.")
+	addSpacer(2)
+
+	addHeader(2, "Group Finder")
+	addLine(2, "MVPs show a crown icon in Group Finder.")
+	addSpacer(2)
+
+	addHeader(2, "Themes")
+	addLine(2, "Switch colour themes in Options.")
+
+	-- Version at bottom
+	local bottomY = math.min(yLeft, yRight) - 8
 	local ver = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
-	ver:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOff)
+	ver:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, bottomY)
 	local getMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 	ver:SetText("v" .. (getMetadata and getMetadata("MythicMemories", "Version") or "?"))
 	ver:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
-	yOff = yOff - 14
+	bottomY = bottomY - 14
 
-	-- Resize to fit content
-	panel:SetHeight(math.abs(yOff) + 12)
+	panel:SetHeight(math.abs(bottomY) + PAD)
 
 	panel:Hide()
 	self.helpPanel = panel
