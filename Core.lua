@@ -5,6 +5,7 @@ LibStub("AceAddon-3.0"):NewAddon(MPT, ADDON_NAME, "AceConsole-3.0", "AceEvent-3.
 function MPT:OnInitialize()
 	self.db = LibStub("AceDB-3.0"):New("MythicMemoriesDB", self.DB_DEFAULTS)
 	self:MigrateMvpKeys()
+	self:LoadSampleRun()
 
 	self:RegisterChatCommand("mm", "SlashCommand")
 
@@ -23,6 +24,47 @@ function MPT:OnInitialize()
 		end,
 	})
 	LibStub("LibDBIcon-1.0"):Register(ADDON_NAME, ldb, self.db.global.minimap)
+end
+
+function MPT:LoadSampleRun()
+	if self.db.global.sampleLoaded then return end
+	self.db.global.sampleLoaded = true
+
+	local ts = time() - 3600
+	local sampleRun = {
+		id = ts,
+		date = date("!%d-%m-%Y", ts),
+		timestamp = ts,
+		dungeon = "City of Threads",
+		mapID = 502,
+		level = 12,
+		timeStr = self:FormatTime(1845000),
+		timeMs = 1845000,
+		affix = "Tyrannical, Storming",
+		affixIDs = {},
+		bonus = 2,
+		onTime = true,
+		members = {
+			{ name = "Mrglgrl",    realm = "Mrgllgrgl",   class = "WARRIOR",     role = "TANK",    guid = "Player-1-100" },
+			{ name = "Grllmrgl",   realm = "Blrglmrg",    class = "PRIEST",      role = "HEALER",  guid = "Player-1-200" },
+			{ name = "Mrgrlgl",    realm = "Grglmrgl",    class = "MAGE",        role = "DAMAGER", guid = "Player-1-300" },
+			{ name = "Blgrmrl",    realm = "Mrgllgrgl",   class = "ROGUE",       role = "DAMAGER", guid = "Player-1-301" },
+			{ name = "Glrmrgl",    realm = "Blrglmrg",    class = "EVOKER",      role = "DAMAGER", guid = "Player-1-302" },
+		},
+		link = "",
+		description = "Clean run, good coordination on last boss.",
+		mvps = {},
+		playerStats = {
+			["Player-1-100"] = { name = "Mrglgrl",  class = "WARRIOR", role = "TANK",    damage = 920000,  dps = 498,  healing = 340000,  hps = 184,  damageTaken = 3200000, deaths = 0, interrupts = 18 },
+			["Player-1-200"] = { name = "Grllmrgl", class = "PRIEST",  role = "HEALER",  damage = 185000,  dps = 100,  healing = 1680000, hps = 910,  damageTaken = 520000,  deaths = 0, interrupts = 3 },
+			["Player-1-300"] = { name = "Mrgrlgl",  class = "MAGE",    role = "DAMAGER", damage = 2150000, dps = 1164, healing = 45000,   hps = 24,   damageTaken = 780000,  deaths = 1, interrupts = 12 },
+			["Player-1-301"] = { name = "Blgrmrl",  class = "ROGUE",   role = "DAMAGER", damage = 2310000, dps = 1251, healing = 32000,   hps = 17,   damageTaken = 690000,  deaths = 0, interrupts = 14 },
+			["Player-1-302"] = { name = "Glrmrgl",  class = "EVOKER",  role = "DAMAGER", damage = 1980000, dps = 1073, healing = 120000,  hps = 65,   damageTaken = 850000,  deaths = 1, interrupts = 9 },
+		},
+		totalDeaths = 2,
+	}
+
+	self:AddRun(sampleRun)
 end
 
 function MPT:OnEnable()
