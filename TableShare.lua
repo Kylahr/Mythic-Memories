@@ -42,7 +42,11 @@ function MPT:OnCommReceived(prefix, message, distribution, sender)
 		end
 	-- Table sharing messages
 	elseif msgType == "TABLE_REQ" then
-		self:OnTableRequest(sender)
+		self:OnTableRequest(sender, data)
+	elseif msgType == "TABLE_LIST_REQ" then
+		self:OnTableListRequest(sender)
+	elseif msgType == "TABLE_LIST_RESP" then
+		self:OnTableListResponse(sender, data)
 	elseif msgType == "TABLE_RESP" then
 		self:OnTableResponse(sender, data)
 	elseif msgType == "TABLE_RESP_Z" then
@@ -57,7 +61,7 @@ end
 
 -- ── Table request / response ─────────────────────────────────────
 
-function MPT:RequestTable(name, realm)
+function MPT:RequestTable(name, realm, tableName)
 	if self.pendingTableRequest then
 		self:Print("Already waiting for a table response...")
 		return
@@ -71,14 +75,22 @@ function MPT:RequestTable(name, realm)
 	self:Print("Requesting M+ table from " .. target .. "...")
 	self.pendingTableRequest = target
 
-	local msg = self:Serialize("TABLE_REQ", {})
+	local data = {}
+	if tableName then data.tableName = tableName end
+	local msg = self:Serialize("TABLE_REQ", data)
 	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", target)
+
+	-- Show loading indicator when switching remote tables
+	if tableName and self:IsViewingRemote() then
+		self:ShowRemoteTableLoading()
+	end
 
 	-- Timeout
 	self.tableRequestTimer = C_Timer.After(REQUEST_TIMEOUT, function()
 		if self.pendingTableRequest then
 			self:Print(self.pendingTableRequest .. " did not respond. They may not have Mythic Memories or sharing is disabled.")
 			self.pendingTableRequest = nil
+			self:HideRemoteTableLoading()
 		end
 	end)
 end
@@ -167,14 +179,28 @@ function MPT:UnpackSharedRun(packed)
 	}
 end
 
-function MPT:OnTableRequest(sender)
+function MPT:OnTableRequest(sender, data)
 	if self.db.global.shareTable == false then
 		local msg = self:Serialize("TABLE_DENIED", {})
 		self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
 		return
 	end
 
-	local runs = self.db.global.runs or {}
+	-- Find the requested table (default to active if no name specified)
+	local requestedName = data and data.tableName or nil
+	local runs
+	if requestedName then
+		for _, tbl in ipairs(self.db.global.tables or {}) do
+			if tbl.name == requestedName then
+				runs = tbl.runs
+				break
+			end
+		end
+	end
+	if not runs then
+		runs = self:GetActiveRuns()
+	end
+
 	local packed = {}
 	local limit = self.shareLimit or MAX_SHARED_RUNS
 	local count = math.min(#runs, limit)
@@ -240,6 +266,10 @@ function MPT:OnTableResponse(sender, data)
 	end
 
 	self:EnterViewMode(sender, { runs = runs, mvps = mvps })
+
+	-- Also request their table list for the remote dropdown
+	local name, realm = sender:match("^([^%-]+)%-?(.*)$")
+	self:RequestTableList(name, realm)
 end
 
 function MPT:OnTableResponseCompressed(sender, encoded)
@@ -301,6 +331,7 @@ function MPT:EnterViewMode(playerName, data)
 	self.expandedRunId = nil
 	self:HideAllPopups()
 
+	self:HideRemoteTableLoading()
 	self:UpdateViewModeUI()
 	self.mainFrame:Show()
 	self:RefreshTable()
@@ -312,6 +343,8 @@ end
 function MPT:ExitViewMode()
 	self.viewingPlayer = nil
 	self.viewingData = nil
+	self.remoteTableList = nil
+	self.remoteTableOwner = nil
 
 	self.expandedRunId = nil
 	self:HideAllPopups()
@@ -344,6 +377,46 @@ function MPT:ImportViewedMvps()
 	end
 
 	self:Print("Imported " .. added .. " new MVP(s). " .. skipped .. " already in your list.")
+end
+
+-- ── Table list request / response ──────────────────────────────
+
+function MPT:RequestTableList(name, realm)
+	local target = name
+	if realm and realm ~= "" then
+		target = name .. "-" .. realm
+	end
+	local msg = self:Serialize("TABLE_LIST_REQ", {})
+	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", target)
+end
+
+function MPT:OnTableListRequest(sender)
+	if self.db.global.shareTable == false then return end
+	local names = {}
+	for _, tbl in ipairs(self.db.global.tables or {}) do
+		names[#names + 1] = tbl.name
+	end
+	local msg = self:Serialize("TABLE_LIST_RESP", { tables = names })
+	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
+end
+
+function MPT:OnTableListResponse(sender, data)
+	if not data or not data.tables then return end
+	self.remoteTableList = data.tables
+	self.remoteTableOwner = sender
+	if self.UpdateRemoteTableDropdown then
+		self:UpdateRemoteTableDropdown()
+	end
+end
+
+-- ── Remote table loading indicator ────────────────────────────
+
+function MPT:ShowRemoteTableLoading()
+	-- Implemented in MainFrame.lua (UI layer)
+end
+
+function MPT:HideRemoteTableLoading()
+	-- Implemented in MainFrame.lua (UI layer)
 end
 
 function MPT:IsViewingRemote()

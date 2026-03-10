@@ -3,7 +3,10 @@ local _, MPT = ...
 MPT.DB_DEFAULTS = {
 	global = {
 		minimap = { hide = false },
-		runs = {},
+		tables = {
+			{ name = "All Runs", runs = {} },
+		},
+		activeTableIndex = 1,
 		mvps = {},
 		favourites = {},
 		shareTable = true,
@@ -14,14 +17,149 @@ MPT.DB_DEFAULTS = {
 	},
 }
 
+-- Migration: wrap flat db.global.runs into tables[1]
+function MPT:MigrateToTables()
+	local g = self.db.global
+	if g.tables and #g.tables > 0 then return end
+	g.tables = {
+		{ name = "All Runs", runs = g.runs or {} },
+	}
+	g.activeTableIndex = 1
+	g.runs = nil
+end
+
+------------------------------------------------------------
+-- Table accessors
+------------------------------------------------------------
+function MPT:GetActiveTable()
+	local idx = self.db.global.activeTableIndex or 1
+	local tbl = self.db.global.tables[idx]
+	if not tbl then
+		self.db.global.activeTableIndex = 1
+		tbl = self.db.global.tables[1]
+	end
+	return tbl
+end
+
+function MPT:GetActiveRuns()
+	return self:GetActiveTable().runs
+end
+
+function MPT:GetActiveTableName()
+	return self:GetActiveTable().name
+end
+
+-- Viewed table: which table is currently displayed (transient, not saved)
+function MPT:GetViewedTableIndex()
+	local idx = self.viewedTableIndex or self.db.global.activeTableIndex or 1
+	if not self.db.global.tables[idx] then idx = 1 end
+	return idx
+end
+
+function MPT:GetViewedTable()
+	return self.db.global.tables[self:GetViewedTableIndex()]
+end
+
+function MPT:GetViewedRuns()
+	return self:GetViewedTable().runs
+end
+
+function MPT:GetViewedTableName()
+	return self:GetViewedTable().name
+end
+
+function MPT:GetTableList()
+	local list = {}
+	for i, tbl in ipairs(self.db.global.tables) do
+		list[#list + 1] = { index = i, name = tbl.name }
+	end
+	return list
+end
+
+------------------------------------------------------------
+-- Table CRUD
+------------------------------------------------------------
+function MPT:CreateTable(name)
+	local tables = self.db.global.tables
+	table.insert(tables, { name = name, runs = {} })
+	return #tables
+end
+
+function MPT:RenameTable(index, newName)
+	local tbl = self.db.global.tables[index]
+	if tbl then
+		tbl.name = newName
+		return true
+	end
+	return false
+end
+
+function MPT:DeleteTable(index)
+	local tables = self.db.global.tables
+	if #tables <= 1 then return false end
+	-- Clean orphaned favourites
+	for _, run in ipairs(tables[index].runs) do
+		if self.db.global.favourites then
+			self.db.global.favourites[run.id] = nil
+		end
+	end
+	table.remove(tables, index)
+	local active = self.db.global.activeTableIndex
+	if active == index then
+		self.db.global.activeTableIndex = math.max(1, index - 1)
+	elseif active > index then
+		self.db.global.activeTableIndex = active - 1
+	end
+	-- Fix viewedTableIndex too
+	if self.viewedTableIndex then
+		if self.viewedTableIndex == index then
+			self.viewedTableIndex = self.db.global.activeTableIndex
+		elseif self.viewedTableIndex > index then
+			self.viewedTableIndex = self.viewedTableIndex - 1
+		end
+	end
+	return true
+end
+
+function MPT:SetActiveTable(index)
+	if not self.db.global.tables[index] then return false end
+	self.db.global.activeTableIndex = index
+	return true
+end
+
+function MPT:ViewTable(index)
+	if not self.db.global.tables[index] then return false end
+	self.viewedTableIndex = index
+	self.expandedRunId = nil
+	if self.mainFrame and self.mainFrame:IsShown() then
+		self:UpdateTableNameInTitle()
+		self:RefreshTable()
+	end
+	return true
+end
+
+function MPT:MoveRunToTable(runId, targetTableIndex)
+	local sourceRuns = self:GetViewedRuns()
+	local targetTable = self.db.global.tables[targetTableIndex]
+	if not targetTable then return false end
+	for i, run in ipairs(sourceRuns) do
+		if run.id == runId then
+			table.remove(sourceRuns, i)
+			table.insert(targetTable.runs, 1, run)
+			return true
+		end
+	end
+	return false
+end
+
 function MPT:AddRun(runData)
 	runData.id = runData.id or time()
-	table.insert(self.db.global.runs, 1, runData)
+	table.insert(self:GetActiveRuns(), 1, runData)
 	return runData
 end
 
 function MPT:GetRun(id)
-	for _, run in ipairs(self.db.global.runs) do
+	for _, run in ipairs(self:GetViewedRuns()) do
 		if run.id == id then
 			return run
 		end
@@ -30,7 +168,7 @@ function MPT:GetRun(id)
 end
 
 function MPT:GetRuns(filterOpts)
-	local sourceRuns = self.viewingData and self.viewingData.runs or self.db.global.runs
+	local sourceRuns = self.viewingData and self.viewingData.runs or self:GetViewedRuns()
 
 	if not filterOpts then
 		return sourceRuns
@@ -158,7 +296,7 @@ end
 
 -- Collect unique values from saved runs for filter dropdowns
 function MPT:CollectFilterValues()
-	local sourceRuns = self.viewingData and self.viewingData.runs or self.db.global.runs
+	local sourceRuns = self.viewingData and self.viewingData.runs or self:GetViewedRuns()
 	local dungeons = {}
 	local affixes = {}
 	local dungeonSet = {}
@@ -188,9 +326,9 @@ function MPT:CollectFilterValues()
 end
 
 function MPT:DeleteRun(id)
-	for i, run in ipairs(self.db.global.runs) do
+	for i, run in ipairs(self:GetViewedRuns()) do
 		if run.id == id then
-			table.remove(self.db.global.runs, i)
+			table.remove(self:GetViewedRuns(), i)
 			if self.db.global.favourites then
 				self.db.global.favourites[id] = nil
 			end
@@ -356,7 +494,7 @@ end
 function MPT:ResetData(resetRuns, resetMvps)
 	local parts = {}
 	if resetRuns then
-		self.db.global.runs = {}
+		self:GetViewedTable().runs = {}
 		parts[#parts + 1] = "runs"
 	end
 	if resetMvps then

@@ -193,6 +193,7 @@ function MPT:ApplyTheme(themeKey)
 			"MPTScrollFrameScrollBarScrollUpButton", "MPTScrollFrameScrollBarScrollDownButton",
 			"MPTMvpSearch", "MPTHelpPanel", "MPTDeleteRunDialog",
 			"MPTFilterPopup", "MPTNotification", "MPTOptionsPanel", "MPTResetDialog",
+			"MPTTableManagerPanel", "MPTDeleteTableDialog", "MPTNewTableInput",
 		}
 		for _, name in ipairs(globalNames) do
 			local f = _G[name]
@@ -228,6 +229,16 @@ function MPT:ApplyTheme(themeKey)
 		self.notifFrame = nil
 		self.linkCopyPopup = nil
 		self.expandedRunId = nil
+		self.tableManagerPanel = nil
+		self.tableBtn = nil
+		self.tableNameLabel = nil
+		self.deleteTableDialog = nil
+		self.tableRowContextMenu = nil
+		self.tableManagerRows = nil
+		self.remoteTableDD = nil
+		self.remoteTableListFrame = nil
+		self.loadingFrame = nil
+		self.moveSubmenu = nil
 		self:CreateMainFrame()
 		self.mainFrame:Show()
 		self:RefreshTable()
@@ -669,6 +680,12 @@ function MPT:CreateMainFrame()
 	title:SetText("Mythic Memories")
 	self.mainTitle = title
 
+	local tableName = frame:CreateFontString(nil, "OVERLAY", "MPTFont_Label")
+	tableName:SetPoint("LEFT", title, "RIGHT", 8, 0)
+	tableName:SetText("(" .. self:GetViewedTableName() .. ")")
+	tableName:SetTextColor(C.textLabel[1], C.textLabel[2], C.textLabel[3])
+	self.tableNameLabel = tableName
+
 	local closeBtn = self:CreateCloseButton(frame)
 	closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -4)
 
@@ -739,6 +756,8 @@ function MPT:CreateMainFrame()
 		if MPT.viewingPlayer then
 			MPT.viewingPlayer = nil
 			MPT.viewingData = nil
+			MPT.remoteTableList = nil
+			MPT.remoteTableOwner = nil
 			MPT:UpdateViewModeUI()
 		end
 	end)
@@ -863,6 +882,23 @@ function MPT:CreateFilterBar(parent)
 		end
 	end)
 	self.filterBtn = filterBtn
+
+	local tableBtn = self:CreateModernButton(bar, 55, 20, "Tables")
+	tableBtn:SetPoint("LEFT", filterBtn, "RIGHT", 8, 0)
+	tableBtn:SetScript("OnClick", function()
+		MPT:ToggleTableManagerPanel()
+	end)
+	tableBtn:SetScript("OnEnter", function(self)
+		self.bg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 1)
+		self.label:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+	end)
+	tableBtn:SetScript("OnLeave", function(self)
+		if not (MPT.tableManagerPanel and MPT.tableManagerPanel:IsShown()) then
+			self.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+			self.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		end
+	end)
+	self.tableBtn = tableBtn
 
 	self.filterBar = bar
 	self.filterPlayerBox = playerBox
@@ -2112,11 +2148,17 @@ end
 
 function MPT:ShowRowContextMenu(row)
 	if not row.runData then return end
+	if self:IsViewingRemote() then return end
 	self:HideAllPopups()
 
 	local runId = row.runData.id
+	-- Calculate menu height: 2 base items + optional Move to Table
+	local tables = self:GetTableList()
+	local showMoveItem = not self:IsViewingRemote() and #tables > 1
+	local menuHeight = showMoveItem and 70 or 48
+
 	local menu = CreateFrame("Frame", nil, self.mainFrame)
-	menu:SetSize(130, 48)
+	menu:SetSize(160, menuHeight)
 	menu:SetFrameStrata("TOOLTIP")
 
 	local bg = menu:CreateTexture(nil, "BACKGROUND")
@@ -2155,7 +2197,77 @@ function MPT:ShowRowContextMenu(row)
 		MPT:RefreshTable()
 	end)
 
-	createMenuBtn(-24, "Delete Run", {C.dangerText[1], C.dangerText[2], C.dangerText[3]}, function()
+	-- "Move to Table" submenu (only in local mode with multiple tables)
+	local deleteYOffset = showMoveItem and -46 or -24
+	if showMoveItem then
+		local moveBtn = CreateFrame("Button", nil, menu)
+		moveBtn:SetHeight(22)
+		moveBtn:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -24)
+		moveBtn:SetPoint("TOPRIGHT", menu, "TOPRIGHT", 0, -24)
+		local moveText = moveBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		moveText:SetPoint("LEFT", 10, 0)
+		moveText:SetText("Move to Table  >")
+		moveText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		local moveBg = moveBtn:CreateTexture(nil, "BACKGROUND")
+		moveBg:SetAllPoints()
+		moveBg:SetColorTexture(0, 0, 0, 0)
+
+		local viewedIdx = self:GetViewedTableIndex()
+
+		moveBtn:SetScript("OnEnter", function()
+			moveBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
+			-- Show submenu
+			if MPT.moveSubmenu then MPT.moveSubmenu:Hide() end
+			local targets = {}
+			for _, t in ipairs(tables) do
+				if t.index ~= viewedIdx then
+					targets[#targets + 1] = t
+				end
+			end
+			local sub = CreateFrame("Frame", nil, menu)
+			sub:SetSize(150, #targets * 22 + 4)
+			sub:SetPoint("TOPLEFT", moveBtn, "TOPRIGHT", 0, 2)
+			sub:SetFrameStrata("TOOLTIP")
+			local subBg = sub:CreateTexture(nil, "BACKGROUND")
+			subBg:SetAllPoints()
+			subBg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+			for si, t in ipairs(targets) do
+				local sbtn = CreateFrame("Button", nil, sub)
+				sbtn:SetHeight(22)
+				sbtn:SetPoint("TOPLEFT", sub, "TOPLEFT", 0, -(si - 1) * 22 - 2)
+				sbtn:SetPoint("RIGHT", sub, "RIGHT", 0, 0)
+				local sText = sbtn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+				sText:SetPoint("LEFT", 10, 0)
+				sText:SetText(t.name)
+				sText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+				local sBg = sbtn:CreateTexture(nil, "BACKGROUND")
+				sBg:SetAllPoints()
+				sBg:SetColorTexture(0, 0, 0, 0)
+				sbtn:SetScript("OnEnter", function()
+					sBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
+				end)
+				sbtn:SetScript("OnLeave", function()
+					sBg:SetColorTexture(0, 0, 0, 0)
+				end)
+				sbtn:SetScript("OnClick", function()
+					MPT:MoveRunToTable(runId, t.index)
+					menu:Hide()
+					if MPT.moveSubmenu then MPT.moveSubmenu:Hide() end
+					MPT:RefreshTable()
+				end)
+			end
+			sub:Show()
+			MPT.moveSubmenu = sub
+		end)
+		moveBtn:SetScript("OnLeave", function()
+			-- Don't hide submenu on leave — let user mouse into it
+			if MPT.moveSubmenu and not MPT.moveSubmenu:IsMouseOver() then
+				moveBg:SetColorTexture(0, 0, 0, 0)
+			end
+		end)
+	end
+
+	createMenuBtn(deleteYOffset, "Delete Run", {C.dangerText[1], C.dangerText[2], C.dangerText[3]}, function()
 		MPT:ShowDeleteRunConfirm(runId)
 	end)
 
@@ -2169,7 +2281,10 @@ function MPT:ShowRowContextMenu(row)
 
 	-- Close on next click anywhere else
 	menu:SetScript("OnUpdate", function(self)
-		if not self:IsMouseOver() and IsMouseButtonDown("LeftButton") then
+		local overMenu = self:IsMouseOver()
+		local overSub = MPT.moveSubmenu and MPT.moveSubmenu:IsShown() and MPT.moveSubmenu:IsMouseOver()
+		if not overMenu and not overSub and IsMouseButtonDown("LeftButton") then
+			if MPT.moveSubmenu then MPT.moveSubmenu:Hide() end
 			self:Hide()
 		end
 	end)
@@ -2960,6 +3075,524 @@ end
 
 -- ── View mode UI updates ─────────────────────────────────────────
 
+-- ── Table name in title bar ───────────────────────────────────
+function MPT:UpdateTableNameInTitle()
+	if self.tableNameLabel then
+		self.tableNameLabel:SetText("(" .. self:GetViewedTableName() .. ")")
+	end
+end
+
+-- ── Table Manager panel ──────────────────────────────────────
+
+function MPT:ToggleTableManagerPanel()
+	if self.tableManagerPanel and self.tableManagerPanel:IsShown() then
+		self.tableManagerPanel:Hide()
+		if self.tableBtn then
+			self.tableBtn.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+			self.tableBtn.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		end
+		return
+	end
+	self:HideAllPopups()
+	self:CreateTableManagerPanel()
+	self:RefreshTableManagerList()
+	self.tableManagerPanel:Show()
+	if self.tableBtn then
+		self.tableBtn.bg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 1)
+		self.tableBtn.label:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+	end
+end
+
+function MPT:CreateTableManagerPanel()
+	if self.tableManagerPanel then return end
+
+	local panel = CreateFrame("Frame", "MPTTableManagerPanel", self.mainFrame)
+	panel:SetSize(260, 300)
+	panel:SetPoint("TOPLEFT", self.tableBtn, "BOTTOMLEFT", 0, -4)
+	panel:SetFrameStrata("DIALOG")
+
+	local bg = panel:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+	local border = panel:CreateTexture(nil, "BACKGROUND", nil, 1)
+	border:SetPoint("TOPLEFT", -1, 1)
+	border:SetPoint("BOTTOMRIGHT", 1, -1)
+	border:SetColorTexture(C.borderColor[1], C.borderColor[2], C.borderColor[3], 1)
+
+	local titleText = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Header")
+	titleText:SetPoint("TOPLEFT", 12, -10)
+	titleText:SetText("Tables")
+
+	-- List container
+	local listContainer = CreateFrame("Frame", nil, panel)
+	listContainer:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -32)
+	listContainer:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -8, 44)
+	listContainer:SetClipsChildren(true)
+	panel.listContainer = listContainer
+
+	-- New table input at bottom (plain EditBox, no WoW template)
+	local newInputContainer = CreateFrame("Frame", "MPTNewTableInput", panel)
+	newInputContainer:SetSize(170, 22)
+	newInputContainer:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 12, 12)
+	local newInputBg = newInputContainer:CreateTexture(nil, "BACKGROUND")
+	newInputBg:SetAllPoints()
+	newInputBg:SetColorTexture(C.inputBg[1], C.inputBg[2], C.inputBg[3], 1)
+
+	local newInput = CreateFrame("EditBox", nil, newInputContainer)
+	newInput:SetAllPoints()
+	newInput:SetAutoFocus(false)
+	newInput:SetFontObject(MPTFont_Cell)
+	newInput:SetMaxLetters(40)
+	newInput:SetTextInsets(6, 6, 0, 0)
+
+	local addBtn = self:CreateModernButton(panel, 55, 22, "+ New")
+	addBtn:SetPoint("LEFT", newInputContainer, "RIGHT", 6, 0)
+	addBtn:SetScript("OnClick", function()
+		local name = newInput:GetText()
+		if name and name:trim() ~= "" then
+			MPT:CreateTable(name:trim())
+			newInput:SetText("")
+			MPT:RefreshTableManagerList()
+		end
+	end)
+	newInput:SetScript("OnEnterPressed", function(self)
+		local name = self:GetText()
+		if name and name:trim() ~= "" then
+			MPT:CreateTable(name:trim())
+			self:SetText("")
+			MPT:RefreshTableManagerList()
+		end
+		self:ClearFocus()
+	end)
+	newInput:SetScript("OnEscapePressed", function(self)
+		self:ClearFocus()
+	end)
+
+	panel:Hide()
+	self.tableManagerPanel = panel
+end
+
+function MPT:RefreshTableManagerList()
+	if not self.tableManagerPanel then return end
+	local container = self.tableManagerPanel.listContainer
+	if not container then return end
+
+	-- Clear existing rows
+	if self.tableManagerRows then
+		for _, row in ipairs(self.tableManagerRows) do
+			row:Hide()
+			row:SetParent(nil)
+		end
+	end
+	self.tableManagerRows = {}
+
+	local tables = self.db.global.tables
+	local activeIdx = self.db.global.activeTableIndex or 1
+	local viewedIdx = self:GetViewedTableIndex()
+	local ROW_H = 30
+
+	for i, tbl in ipairs(tables) do
+		local row = CreateFrame("Button", nil, container)
+		row:SetHeight(ROW_H)
+		row:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -(i - 1) * ROW_H)
+		row:SetPoint("RIGHT", container, "RIGHT", 0, 0)
+
+		local rowBg = row:CreateTexture(nil, "BACKGROUND")
+		rowBg:SetAllPoints()
+		local isActive = (i == activeIdx)
+		local isViewed = (i == viewedIdx)
+
+		-- Viewed table gets highlight background
+		if isViewed then
+			rowBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
+		else
+			rowBg:SetColorTexture(0, 0, 0, 0)
+		end
+		row.rowBg = rowBg
+		row._isViewed = isViewed
+
+		-- Active indicator (gold dot — marks where new runs go)
+		local dot = row:CreateTexture(nil, "ARTWORK")
+		dot:SetSize(8, 8)
+		dot:SetPoint("LEFT", row, "LEFT", 6, 0)
+		dot:SetColorTexture(1, 0.85, 0)
+		if not isActive then dot:Hide() end
+		row.dot = dot
+
+		-- Table name
+		local nameText = row:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		nameText:SetPoint("LEFT", row, "LEFT", 20, 0)
+		nameText:SetPoint("RIGHT", row, "RIGHT", -70, 0)
+		nameText:SetJustifyH("LEFT")
+		nameText:SetText(tbl.name)
+		if isViewed then
+			nameText:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+		else
+			nameText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		end
+		row.nameText = nameText
+
+		-- Run count
+		local countText = row:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+		countText:SetPoint("RIGHT", row, "RIGHT", -28, 0)
+		countText:SetText(#tbl.runs)
+		countText:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+
+		-- Delete button (hidden for last table)
+		local delBtn = CreateFrame("Button", nil, row)
+		delBtn:SetSize(18, 18)
+		delBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+		local delText = delBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		delText:SetPoint("CENTER")
+		delText:SetText("X")
+		delText:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		delBtn:SetScript("OnEnter", function()
+			delText:SetTextColor(C.dangerHover[1], C.dangerHover[2], C.dangerHover[3])
+		end)
+		delBtn:SetScript("OnLeave", function()
+			delText:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		end)
+		local tableIndex = i
+		delBtn:SetScript("OnClick", function()
+			MPT:ShowDeleteTableConfirm(tableIndex, tbl.name, #tbl.runs)
+		end)
+		if #tables <= 1 then delBtn:Hide() end
+
+		-- Hover effect
+		row:SetScript("OnEnter", function()
+			if not row._isViewed then
+				rowBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.10)
+			end
+		end)
+		row:SetScript("OnLeave", function()
+			if not row._isViewed then
+				rowBg:SetColorTexture(0, 0, 0, 0)
+			end
+		end)
+
+		-- Left-click to view table, right-click for context menu
+		row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		row:SetScript("OnClick", function(_, button)
+			if button == "RightButton" then
+				MPT:ShowTableRowContextMenu(row, tableIndex, tbl.name)
+			else
+				MPT:ViewTable(tableIndex)
+				MPT:RefreshTableManagerList()
+			end
+		end)
+
+		self.tableManagerRows[#self.tableManagerRows + 1] = row
+	end
+end
+
+function MPT:ShowTableRowContextMenu(anchor, tableIndex, tableName)
+	if self.tableRowContextMenu then
+		self.tableRowContextMenu:Hide()
+	end
+
+	local isAlreadyActive = (tableIndex == (self.db.global.activeTableIndex or 1))
+	local menuHeight = isAlreadyActive and 26 or 48
+
+	local menu = CreateFrame("Frame", nil, self.mainFrame)
+	menu:SetSize(140, menuHeight)
+	menu:SetFrameStrata("TOOLTIP")
+
+	local bg = menu:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+	local function createCtxBtn(yOffset, label, textColor, onClick)
+		local btn = CreateFrame("Button", nil, menu)
+		btn:SetHeight(22)
+		btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, yOffset)
+		btn:SetPoint("TOPRIGHT", menu, "TOPRIGHT", 0, yOffset)
+		local btnText = btn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		btnText:SetPoint("LEFT", 10, 0)
+		btnText:SetText(label)
+		btnText:SetTextColor(textColor[1], textColor[2], textColor[3])
+		local btnBg = btn:CreateTexture(nil, "BACKGROUND")
+		btnBg:SetAllPoints()
+		btnBg:SetColorTexture(0, 0, 0, 0)
+		btn:SetScript("OnEnter", function()
+			btnBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
+		end)
+		btn:SetScript("OnLeave", function()
+			btnBg:SetColorTexture(0, 0, 0, 0)
+		end)
+		btn:SetScript("OnClick", function()
+			menu:Hide()
+			onClick()
+		end)
+		return btn
+	end
+
+	-- "Set Active" only if not already active
+	if not isAlreadyActive then
+		createCtxBtn(-2, "Set Active", C.textPrimary, function()
+			MPT:SetActiveTable(tableIndex)
+			MPT:RefreshTableManagerList()
+		end)
+		createCtxBtn(-24, "Rename", C.textPrimary, function()
+			MPT:StartInlineRename(tableIndex)
+		end)
+	else
+		createCtxBtn(-2, "Rename", C.textPrimary, function()
+			MPT:StartInlineRename(tableIndex)
+		end)
+	end
+
+	local scale = UIParent:GetEffectiveScale()
+	local x, y = GetCursorPosition()
+	menu:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+	menu:Show()
+	self.tableRowContextMenu = menu
+
+	menu:SetScript("OnUpdate", function(self)
+		if not self:IsMouseOver() and IsMouseButtonDown("LeftButton") then
+			self:Hide()
+		end
+	end)
+end
+
+function MPT:StartInlineRename(tableIndex)
+	if not self.tableManagerRows or not self.tableManagerRows[tableIndex] then return end
+	local row = self.tableManagerRows[tableIndex]
+	local tbl = self.db.global.tables[tableIndex]
+	if not tbl then return end
+
+	row.nameText:Hide()
+
+	local edit = CreateFrame("EditBox", nil, row)
+	edit:SetSize(row.nameText:GetWidth(), 20)
+	edit:SetPoint("LEFT", row, "LEFT", 20, 0)
+	edit:SetFontObject(MPTFont_Cell)
+	edit:SetAutoFocus(true)
+	edit:SetText(tbl.name)
+	edit:HighlightText()
+	edit:SetMaxLetters(40)
+
+	local editBg = edit:CreateTexture(nil, "BACKGROUND")
+	editBg:SetAllPoints()
+	editBg:SetColorTexture(C.inputBg[1], C.inputBg[2], C.inputBg[3], 1)
+
+	local function finishRename()
+		local newName = edit:GetText()
+		if newName and newName:trim() ~= "" then
+			MPT:RenameTable(tableIndex, newName:trim())
+			MPT:UpdateTableNameInTitle()
+		end
+		edit:Hide()
+		edit:SetParent(nil)
+		row.nameText:Show()
+		MPT:RefreshTableManagerList()
+	end
+
+	edit:SetScript("OnEnterPressed", finishRename)
+	edit:SetScript("OnEscapePressed", function()
+		edit:Hide()
+		edit:SetParent(nil)
+		row.nameText:Show()
+	end)
+	edit:SetScript("OnEditFocusLost", finishRename)
+end
+
+function MPT:ShowDeleteTableConfirm(tableIndex, tableName, runCount)
+	if self.deleteTableDialog then
+		self.deleteTableDialog:Hide()
+	end
+
+	local dialog = CreateFrame("Frame", "MPTDeleteTableDialog", self.mainFrame)
+	dialog:SetSize(300, 120)
+	dialog:SetPoint("CENTER", self.mainFrame, "CENTER", 0, 0)
+	dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+
+	local bg = dialog:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+	local border = dialog:CreateTexture(nil, "BACKGROUND", nil, 1)
+	border:SetPoint("TOPLEFT", -1, 1)
+	border:SetPoint("BOTTOMRIGHT", 1, -1)
+	border:SetColorTexture(C.borderColor[1], C.borderColor[2], C.borderColor[3], 1)
+
+	local msg = dialog:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+	msg:SetPoint("TOP", dialog, "TOP", 0, -16)
+	msg:SetWidth(260)
+	msg:SetText("Delete table '" .. tableName .. "'?\n" .. runCount .. " run(s) will be permanently lost.")
+	msg:SetTextColor(C.textNeutral[1], C.textNeutral[2], C.textNeutral[3])
+
+	local yesBtn = self:CreateModernButton(dialog, 80, 24, "Delete")
+	yesBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -8, 14)
+	yesBtn.bg:SetColorTexture(C.dangerBg[1], C.dangerBg[2], C.dangerBg[3], 1)
+	yesBtn.label:SetTextColor(C.dangerText[1], C.dangerText[2], C.dangerText[3])
+	yesBtn:SetScript("OnClick", function()
+		MPT:DeleteTable(tableIndex)
+		dialog:Hide()
+		MPT:UpdateTableNameInTitle()
+		MPT:RefreshTable()
+		MPT:RefreshTableManagerList()
+	end)
+
+	local noBtn = self:CreateModernButton(dialog, 80, 24, "Cancel")
+	noBtn:SetPoint("BOTTOMLEFT", dialog, "BOTTOM", 8, 14)
+	noBtn:SetScript("OnClick", function()
+		dialog:Hide()
+	end)
+
+	dialog:Show()
+	self.deleteTableDialog = dialog
+end
+
+-- ── Remote table loading indicator ───────────────────────────
+
+function MPT:ShowRemoteTableLoading()
+	if not self.tableCard then return end
+	if not self.loadingFrame then
+		local f = CreateFrame("Frame", nil, self.tableCard)
+		f:SetAllPoints()
+		f:SetFrameLevel(self.tableCard:GetFrameLevel() + 10)
+		local lbg = f:CreateTexture(nil, "BACKGROUND")
+		lbg:SetAllPoints()
+		lbg:SetColorTexture(C.contentBg[1], C.contentBg[2], C.contentBg[3], 0.85)
+		local text = f:CreateFontString(nil, "OVERLAY", "MPTFont_Title")
+		text:SetPoint("CENTER")
+		text:SetText("Loading...")
+		text:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+		f._text = text
+		f._dots = 0
+		f:SetScript("OnUpdate", function(self, elapsed)
+			self._timer = (self._timer or 0) + elapsed
+			if self._timer > 0.5 then
+				self._timer = 0
+				self._dots = (self._dots + 1) % 4
+				self._text:SetText("Loading" .. string.rep(".", self._dots))
+			end
+		end)
+		self.loadingFrame = f
+	end
+	self.loadingFrame:Show()
+end
+
+function MPT:HideRemoteTableLoading()
+	if self.loadingFrame then self.loadingFrame:Hide() end
+end
+
+-- ── Remote table dropdown in view mode ───────────────────────
+
+function MPT:UpdateRemoteTableDropdown()
+	if not self.remoteTableDD or not self.remoteTableList then return end
+	-- Rebuild dropdown items
+	self.remoteTableDD._items = self.remoteTableList
+	-- Update display to show first table name if current isn't set
+end
+
+function MPT:CreateRemoteTableDropdown()
+	if self.remoteTableDD then return end
+
+	local dd = CreateFrame("Button", nil, self.viewTitleFrame)
+	dd:SetSize(140, 22)
+	dd:SetPoint("RIGHT", self.viewTitleFrame, "RIGHT", -60, 4)
+
+	local ddBg = dd:CreateTexture(nil, "BACKGROUND")
+	ddBg:SetAllPoints()
+	ddBg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+	dd._bg = ddBg
+
+	local ddText = dd:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+	ddText:SetPoint("LEFT", 8, 0)
+	ddText:SetPoint("RIGHT", -16, 0)
+	ddText:SetJustifyH("LEFT")
+	ddText:SetText("Select Table")
+	ddText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+	dd._text = ddText
+
+	local arrow = dd:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
+	arrow:SetPoint("RIGHT", dd, "RIGHT", -4, 0)
+	arrow:SetText("v")
+	arrow:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+
+	dd:SetScript("OnEnter", function()
+		ddBg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 1)
+	end)
+	dd:SetScript("OnLeave", function()
+		ddBg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+	end)
+	dd:SetScript("OnClick", function()
+		MPT:ToggleRemoteTableList()
+	end)
+
+	dd._items = {}
+	dd:Hide()
+	self.remoteTableDD = dd
+end
+
+function MPT:ToggleRemoteTableList()
+	if self.remoteTableListFrame and self.remoteTableListFrame:IsShown() then
+		self.remoteTableListFrame:Hide()
+		return
+	end
+
+	if not self.remoteTableDD or not self.remoteTableList or #self.remoteTableList == 0 then
+		return
+	end
+
+	if self.remoteTableListFrame then
+		self.remoteTableListFrame:Hide()
+		self.remoteTableListFrame:SetParent(nil)
+	end
+
+	local items = self.remoteTableList
+	local itemH = 22
+	local listFrame = CreateFrame("Frame", nil, self.remoteTableDD)
+	listFrame:SetSize(140, #items * itemH + 4)
+	listFrame:SetPoint("TOPLEFT", self.remoteTableDD, "BOTTOMLEFT", 0, -2)
+	listFrame:SetFrameStrata("TOOLTIP")
+
+	local lbg = listFrame:CreateTexture(nil, "BACKGROUND")
+	lbg:SetAllPoints()
+	lbg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+	for idx, tableName in ipairs(items) do
+		local btn = CreateFrame("Button", nil, listFrame)
+		btn:SetHeight(itemH)
+		btn:SetPoint("TOPLEFT", listFrame, "TOPLEFT", 0, -(idx - 1) * itemH - 2)
+		btn:SetPoint("RIGHT", listFrame, "RIGHT", 0, 0)
+
+		local btnText = btn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		btnText:SetPoint("LEFT", 10, 0)
+		btnText:SetText(tableName)
+		btnText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+
+		local btnBg = btn:CreateTexture(nil, "BACKGROUND")
+		btnBg:SetAllPoints()
+		btnBg:SetColorTexture(0, 0, 0, 0)
+
+		btn:SetScript("OnEnter", function()
+			btnBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
+		end)
+		btn:SetScript("OnLeave", function()
+			btnBg:SetColorTexture(0, 0, 0, 0)
+		end)
+		btn:SetScript("OnClick", function()
+			listFrame:Hide()
+			self.remoteTableDD._text:SetText(tableName)
+			-- Request this specific table from the remote player
+			local name, realm = MPT.viewingPlayer:match("^([^%-]+)%-?(.*)$")
+			MPT:RequestTable(name, realm, tableName)
+		end)
+	end
+
+	listFrame:Show()
+	self.remoteTableListFrame = listFrame
+
+	listFrame:SetScript("OnUpdate", function(self)
+		if not self:IsMouseOver() and not MPT.remoteTableDD:IsMouseOver() and IsMouseButtonDown("LeftButton") then
+			self:Hide()
+		end
+	end)
+end
+
 function MPT:UpdateViewModeUI()
 	if not self.mainFrame then return end
 
@@ -3006,15 +3639,32 @@ function MPT:UpdateViewModeUI()
 		self.viewTitle:SetText(hex .. shortName .. "'s |r" .. goldHex .. "Table|r")
 		self.viewTitleFrame:Show()
 		self.mainTitle:Hide()
+		if self.tableNameLabel then self.tableNameLabel:Hide() end
 		self.backBtn:Show()
 		if self.helpBtn then self.helpBtn:Hide() end
 		if self.optionsBtn then self.optionsBtn:Hide() end
 		if self.optionsPanel then self.optionsPanel:Hide() end
+		if self.tableBtn then self.tableBtn:Hide() end
+		if self.tableManagerPanel then self.tableManagerPanel:Hide() end
+		-- Show remote table dropdown
+		self:CreateRemoteTableDropdown()
+		if self.remoteTableDD then
+			self.remoteTableDD:Show()
+			if self.remoteTableList then
+				self:UpdateRemoteTableDropdown()
+			end
+		end
 	else
 		self.mainTitle:Show()
+		if self.tableNameLabel then self.tableNameLabel:Show() end
 		if self.viewTitleFrame then self.viewTitleFrame:Hide() end
 		self.backBtn:Hide()
 		if self.helpBtn then self.helpBtn:Show() end
 		if self.optionsBtn then self.optionsBtn:Show() end
+		if self.tableBtn then self.tableBtn:Show() end
+		if self.remoteTableDD then self.remoteTableDD:Hide() end
+		if self.remoteTableListFrame then self.remoteTableListFrame:Hide() end
+		self.remoteTableList = nil
+		self.remoteTableOwner = nil
 	end
 end

@@ -4,6 +4,7 @@ LibStub("AceAddon-3.0"):NewAddon(MPT, ADDON_NAME, "AceConsole-3.0", "AceEvent-3.
 
 function MPT:OnInitialize()
 	self.db = LibStub("AceDB-3.0"):New("MythicMemoriesDB", self.DB_DEFAULTS)
+	self:MigrateToTables()
 	self:MigrateMvpKeys()
 	self:LoadSampleRun()
 

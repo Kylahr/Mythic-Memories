@@ -36,7 +36,19 @@ function MPT:HideAllPopups()
 		end
 	end
 	if self.rowContextMenu then self.rowContextMenu:Hide() end
+	if self.moveSubmenu then self.moveSubmenu:Hide() end
 	if self.deleteRunDialog then self.deleteRunDialog:Hide() end
+	if self.tableManagerPanel then
+		self.tableManagerPanel:Hide()
+		if self.tableBtn then
+			self.tableBtn.bg:SetColorTexture(P().btnBg[1], P().btnBg[2], P().btnBg[3], 1)
+			self.tableBtn.label:SetTextColor(P().textPrimary[1], P().textPrimary[2], P().textPrimary[3])
+		end
+	end
+	if self.tableRowContextMenu then self.tableRowContextMenu:Hide() end
+	if self.deleteTableDialog then self.deleteTableDialog:Hide() end
+	if self.loadingFrame then self.loadingFrame:Hide() end
+	if self.remoteTableListFrame then self.remoteTableListFrame:Hide() end
 	-- Close any open dropdown lists
 	if self._activeDropdown and self._activeDropdown._listFrame then
 		self._activeDropdown._listFrame:Hide()
