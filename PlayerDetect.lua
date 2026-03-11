@@ -11,8 +11,6 @@ local PENDING_TTL = 8 -- seconds before treating no-response as "no addon"
 local lastTooltipUnit = nil -- "Name-Realm" currently shown in tooltip
 local scanBtn = nil -- module-local target button reference
 
-local ICON_STRING = "|TInterface\\AddOns\\MythicMemories\\icon:16:16:0:0|t"
-
 -- ── Cache helpers ─────────────────────────────────────────────
 
 local function GetCacheEntry(nameKey)

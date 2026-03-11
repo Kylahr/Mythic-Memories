@@ -246,10 +246,18 @@ function MPT:OnTableRequest(sender, data)
 	end
 end
 
+function MPT:CancelTableRequestTimer()
+	if self.tableRequestTimer then
+		self.tableRequestTimer:Cancel()
+		self.tableRequestTimer = nil
+	end
+end
+
 function MPT:OnTableResponse(sender, data)
 	if not self.pendingTableRequest then return end
 
 	self.pendingTableRequest = nil
+	self:CancelTableRequestTimer()
 
 	if not data or not data.r then
 		self:Print("Received invalid data from " .. sender)
@@ -323,6 +331,7 @@ function MPT:OnTableDenied(sender)
 	if not self.pendingTableRequest then return end
 
 	self.pendingTableRequest = nil
+	self:CancelTableRequestTimer()
 	self:Print(sender .. " has table sharing disabled.")
 end
 

@@ -58,7 +58,7 @@ function MPT:BroadcastMvpRemove(nameRealm)
 	self:SendSyncMessage(msg)
 end
 
-function MPT:SendFullMvpList(target)
+function MPT:SendFullMvpList()
 	local list = {}
 	for nameRealm, data in pairs(self.db.global.mvps) do
 		table.insert(list, {

@@ -289,6 +289,7 @@ local ROLE_LABELS = {
 	DAMAGER = "DPS",
 }
 
+-- Expose for tests
 MPT.COLUMNS = COLUMNS
 MPT.ROW_HEIGHT = ROW_HEIGHT
 MPT.VISIBLE_ROWS = VISIBLE_ROWS
@@ -644,10 +645,8 @@ function MPT:CreateMainFrame()
 	if self.mainFrame then return end
 
 	local PADDING = 8
-	local SCROLLBAR_WIDTH = 18
 	local tableWidth = getTotalWidth()
-	local tableAreaWidth = math.max(tableWidth + SCROLLBAR_WIDTH + 12, 730)
-	local totalWidth = tableAreaWidth
+	local totalWidth = math.max(tableWidth + 18 + 12, 730)
 	-- 26 (title bar) + 30 (filter bar gap) + HEADER_HEIGHT + rows = exact fit
 	local totalHeight = 26 + 30 + HEADER_HEIGHT + (ROW_HEIGHT * VISIBLE_ROWS)
 
@@ -1826,7 +1825,7 @@ function MPT:RefreshMvpsSidePanel()
 
 	local isViewing = self:IsViewingRemote()
 	local mvpSource = isViewing and (self.viewingData and self.viewingData.mvps or {}) or self.db.global.mvps
-	local runSource = isViewing and (self.viewingData and self.viewingData.runs or {}) or (self.db.global.runs or {})
+	local runSource = isViewing and (self.viewingData and self.viewingData.runs or {}) or self:GetViewedRuns()
 
 	if self.mvpImportBtn then
 		if isViewing then self.mvpImportBtn:Show() else self.mvpImportBtn:Hide() end

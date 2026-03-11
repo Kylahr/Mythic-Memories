@@ -37,7 +37,7 @@ local STAT_COLUMNS = {
 	{ key = "interrupts", label = "INTS",       width = 50 },
 }
 
-MPT.STAT_COLUMNS = STAT_COLUMNS
+MPT.STAT_COLUMNS = STAT_COLUMNS -- expose for tests
 
 -- Role icons via texture + tex coords (desaturated for pictogram look)
 local ROLE_TEX = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"

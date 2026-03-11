@@ -47,10 +47,6 @@ function MPT:GetActiveRuns()
 	return self:GetActiveTable().runs
 end
 
-function MPT:GetActiveTableName()
-	return self:GetActiveTable().name
-end
-
 -- Viewed table: which table is currently displayed (transient, not saved)
 function MPT:GetViewedTableIndex()
 	local idx = self.viewedTableIndex or self.db.global.activeTableIndex or 1
