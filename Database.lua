@@ -14,6 +14,7 @@ MPT.DB_DEFAULTS = {
 		mvpSound = true,
 		notificationPos = { point = "TOP", x = 0, y = -200 },
 		theme = "coffee",
+		mvpPanelOpen = true,
 	},
 }
 

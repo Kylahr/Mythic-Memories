@@ -644,7 +644,7 @@ function MPT:CreateMainFrame()
 	local SCROLLBAR_WIDTH = 18
 	local tableWidth = getTotalWidth()
 	local tableAreaWidth = math.max(tableWidth + SCROLLBAR_WIDTH + 12, 730)
-	local totalWidth = MVP_PANEL_WIDTH + tableAreaWidth  -- MVP left, table (scrollbar flush right)
+	local totalWidth = tableAreaWidth
 	-- 26 (title bar) + 30 (filter bar gap) + HEADER_HEIGHT + rows = exact fit
 	local totalHeight = 26 + 30 + HEADER_HEIGHT + (ROW_HEIGHT * VISIBLE_ROWS)
 
@@ -689,9 +689,30 @@ function MPT:CreateMainFrame()
 	local closeBtn = self:CreateCloseButton(frame)
 	closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -4)
 
-	-- Back button (visible only in view mode)
+	-- MVP panel toggle button (arrow, title bar left edge)
+	local mvpToggleBtn = CreateFrame("Button", nil, frame)
+	mvpToggleBtn:SetSize(26, 26)
+	mvpToggleBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, 2)
+	local arrowLabel = mvpToggleBtn:CreateFontString(nil, "OVERLAY")
+	arrowLabel:SetFont(STANDARD_TEXT_FONT, 32, "OUTLINE")
+	arrowLabel:SetPoint("CENTER", 0, 0)
+	arrowLabel:SetText("\194\171") -- «
+	arrowLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	mvpToggleBtn.arrowLabel = arrowLabel
+	mvpToggleBtn:SetScript("OnEnter", function()
+		arrowLabel:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+	end)
+	mvpToggleBtn:SetScript("OnLeave", function()
+		arrowLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+	end)
+	mvpToggleBtn:SetScript("OnClick", function()
+		MPT:ToggleMvpPanel()
+	end)
+	self.mvpToggleBtn = mvpToggleBtn
+
+	-- Back button (visible only in view mode, chained right of toggle)
 	local backBtn = self:CreateModernButton(frame, 60, 20, "< Back")
-	backBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", MVP_PANEL_WIDTH + 8, -4)
+	backBtn:SetPoint("LEFT", mvpToggleBtn, "RIGHT", 4, 0)
 	backBtn:SetScript("OnClick", function()
 		MPT:ExitViewMode()
 	end)
@@ -764,7 +785,7 @@ function MPT:CreateMainFrame()
 
 	-- ── Content card (lighter inset area for filter + table) ────
 	local tableCard = CreateFrame("Frame", nil, frame)
-	tableCard:SetPoint("TOPLEFT", frame, "TOPLEFT", MVP_PANEL_WIDTH, -26)
+	tableCard:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -26)
 	tableCard:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
 	local tcBg = tableCard:CreateTexture(nil, "BACKGROUND")
 	tcBg:SetAllPoints()
@@ -783,6 +804,11 @@ function MPT:CreateMainFrame()
 
 	frame:Hide()
 	self.mainFrame = frame
+
+	-- Apply saved MVP panel state
+	if self.db and self.db.global.mvpPanelOpen == false then
+		self:SetMvpPanelOpen(false)
+	end
 end
 
 function MPT:CreateFilterBar(parent)
@@ -907,7 +933,7 @@ end
 
 function MPT:CreateColumnHeaders(parent)
 	local header = CreateFrame("Frame", nil, parent)
-	header:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -30)
+	header:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -30)
 	header:SetPoint("RIGHT", parent, "RIGHT", -6, 0)
 	header:SetHeight(HEADER_HEIGHT)
 
@@ -930,7 +956,7 @@ end
 
 function MPT:CreateScrollFrame(parent, tableWidth)
 	local scrollParent = CreateFrame("Frame", nil, parent)
-	scrollParent:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -30 - HEADER_HEIGHT)
+	scrollParent:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -30 - HEADER_HEIGHT)
 	scrollParent:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
 	scrollParent:SetClipsChildren(true)
 	-- Fill empty space below rows with the base row color so no contentBg strip shows
@@ -1576,9 +1602,9 @@ local MVP_BUBBLE_SPACING = 3
 function MPT:CreateMvpsSidePanel(parent, padding, tableCard)
 	local panel = CreateFrame("Frame", nil, parent)
 	panel:SetWidth(MVP_PANEL_WIDTH)
-	-- Left side, full height
-	panel:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-	panel:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 0)
+	-- Extends to the LEFT of the main frame
+	panel:SetPoint("TOPRIGHT", parent, "TOPLEFT", 0, 0)
+	panel:SetPoint("BOTTOMRIGHT", parent, "BOTTOMLEFT", 0, 0)
 
 	-- Panel background (full height, covers title bar area on the left)
 	local SCROLL_BAR_WIDTH = 4
@@ -1770,6 +1796,15 @@ function MPT:CreateMvpBubble(parent)
 	removeBtn:SetScript("OnLeave", function() xLabel:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3]) end)
 	bubble.removeBtn = removeBtn
 
+	-- Party-vouched right accent bar (3px, green)
+	local rightBar = bubble:CreateTexture(nil, "ARTWORK")
+	rightBar:SetWidth(3)
+	rightBar:SetPoint("TOPRIGHT", bubble, "TOPRIGHT", 0, 0)
+	rightBar:SetPoint("BOTTOMRIGHT", bubble, "BOTTOMRIGHT", 0, 0)
+	rightBar:SetColorTexture(0.2, 1, 0.2, 1)
+	rightBar:Hide()
+	bubble.rightBar = rightBar
+
 	-- Highlight on hover
 	local hl = bubble:CreateTexture(nil, "HIGHLIGHT")
 	hl:SetAllPoints()
@@ -1866,6 +1901,26 @@ function MPT:RefreshMvpsSidePanel()
 			bubble.noteIcon:Hide()
 		end
 
+		-- Shared MVP right bar (green = you or a party member also has this MVP)
+		local vouchedBy, partyNote = self:CheckPartyMvp(nameRealm)
+		if not vouchedBy and isViewing then
+			local normalized = self:NormalizeNameRealm(nameRealm)
+			local localMvps = self.db.global.mvps or {}
+			if localMvps[normalized] then
+				vouchedBy = "you"
+				partyNote = localMvps[normalized].note
+			end
+		end
+		if vouchedBy and bubble.rightBar then
+			bubble.rightBar:Show()
+			bubble.vouchedBy = vouchedBy
+			bubble.partyNote = partyNote
+		elseif bubble.rightBar then
+			bubble.rightBar:Hide()
+			bubble.vouchedBy = nil
+			bubble.partyNote = nil
+		end
+
 		-- Tooltip with note on hover
 		bubble:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1883,6 +1938,20 @@ function MPT:RefreshMvpsSidePanel()
 					GameTooltip:AddLine(note, 1, 1, 1, true)
 					GameTooltip:AddLine(" ")
 				end
+			end
+			if self.vouchedBy then
+				if self.vouchedBy == "you" then
+					GameTooltip:AddLine("Also in your list", 0.2, 1, 0.2)
+					if self.partyNote and self.partyNote ~= "" then
+						GameTooltip:AddLine("Your note: " .. self.partyNote, 0.7, 0.85, 1, true)
+					end
+				else
+					GameTooltip:AddLine("Also in " .. self.vouchedBy .. "'s list", 0.2, 1, 0.2)
+					if self.partyNote and self.partyNote ~= "" then
+						GameTooltip:AddLine(self.vouchedBy .. "'s note: " .. self.partyNote, 0.7, 0.85, 1, true)
+					end
+				end
+				GameTooltip:AddLine(" ")
 			end
 			GameTooltip:AddLine("Left-click to scroll to run", 0.7, 0.7, 0.7)
 			if not isViewing then
@@ -2058,23 +2127,27 @@ function MPT:CreateHelpPanel()
 
 	-- ── LEFT COLUMN ──
 	addHeader(1, "Getting Started")
-	addLine(1, "Mythic Memories automatically records every M+ run you complete with full group and stat tracking.")
+	addLine(1, "Every M+ run is recorded automatically — stats, group, and all.")
 	addSpacer(1)
 
 	addHeader(1, "Run Table")
-	addLine(1, "Left-click a row to expand per-player stats.")
-	addLine(1, "Right-click a row to favourite it.")
-	addLine(1, "Click LINK or DESC to edit them.")
+	addLine(1, "Click a row to expand per-player stats.")
+	addLine(1, "Right-click a row to open the context menu.")
 	addSpacer(1)
 
-	addHeader(1, "Favourites")
-	addIconLine(1, "Interface\\COMMON\\FavoritesIcon", 1, 0.85, 0, "Star in the toolbar filters favourites only.")
-	addLine(1, "Favourited runs show a gold accent bar.")
+	addHeader(1, "Tables")
+	addLine(1, "Organize runs into multiple tables. The active table (gold dot) receives new runs.")
+	addLine(1, "Tables button opens the Table Manager. Right-click a table for options.")
 	addSpacer(1)
 
 	addHeader(1, "Filters")
-	addLine(1, "Player/Realm search bars for quick filtering.")
-	addLine(1, "Filter button for dungeon, affix, upgrade, role, and level range.")
+	addIconLine(1, "Interface\\COMMON\\FavoritesIcon", 1, 0.85, 0, "Toolbar star filters favourites only.")
+	addLine(1, "Filter button opens advanced filters: dungeon, affix, level, role, and more.")
+	addSpacer(1)
+
+	addHeader(1, "Table Sharing")
+	addLine(1, "Right-click a portrait to view their runs or add them as MVP.")
+	addLine(1, "Browse their tables with the dropdown. Import their MVPs to your list.")
 	addSpacer(1)
 
 	addHeader(1, "Slash Commands")
@@ -2083,33 +2156,27 @@ function MPT:CreateHelpPanel()
 
 	-- ── RIGHT COLUMN ──
 	addHeader(2, "MVP System")
-	addLine(2, "Mark standout players to remember them.")
-	addLine(2, "Left-click a name in stats to toggle MVP.")
-	addLine(2, "Right-click a name to add with a note.")
-	addLine(2, "MVP list is in the side panel on the left.")
+	addLine(2, "Mark standout players you want to remember.")
+	addLine(2, "Click a name in the stat breakdown to toggle MVP. Right-click to add with a note.")
+	addLine(2, "The arrow button toggles the MVP side panel.")
+	addLine(2, "MVPs are global — shared across all tables.")
 	addSpacer(2)
 
-	addHeader(2, "MVP Icons")
+	addHeader(2, "MVP Crowns")
 	addIconLine(2, "Interface\\GroupFrame\\UI-Group-AssistantIcon", 1, 0.82, 0, "Your MVP")
-	addIconLine(2, "Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.3, 0.7, 1, "Their MVP (shared table)", true)
-	addIconLine(2, "Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.2, 1, 0.2, "Shared MVP (both lists)", true)
+	addIconLine(2, "Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.3, 0.7, 1, "Party member's MVP", true)
+	addIconLine(2, "Interface\\GroupFrame\\UI-Group-AssistantIcon", 0.2, 1, 0.2, "Both lists", true)
+	addLine(2, "Crowns appear in Group Finder, world tooltips, and the remote view title bar.")
 	addSpacer(2)
 
-	addHeader(2, "Notifications")
-	addLine(2, "MVPs joining your party trigger a popup. Toggle sound in Options.")
+	addHeader(2, "Party Awareness")
+	addLine(2, "Your party shares MVP lists automatically.")
+	addLine(2, "A green bar on the right of an MVP bubble means a party member also has them.")
+	addLine(2, "MVPs joining your party trigger a popup notification.")
 	addSpacer(2)
 
-	addHeader(2, "Table Sharing")
-	addLine(2, "Right-click a portrait to view their runs or add them as MVP.")
-	addLine(2, "Import button saves their MVPs to your list.")
-	addSpacer(2)
-
-	addHeader(2, "Group Finder")
-	addLine(2, "MVPs show a crown icon in Group Finder.")
-	addSpacer(2)
-
-	addHeader(2, "Themes")
-	addLine(2, "Switch colour themes in Options.")
+	addHeader(2, "Themes & Options")
+	addLine(2, "Colour themes, sharing, notifications, and data reset — all in Options (cog icon).")
 
 	-- Version at bottom
 	local bottomY = math.min(yLeft, yRight) - 8
@@ -3626,17 +3693,80 @@ function MPT:UpdateViewModeUI()
 		-- Create a view title overlay frame (renders above MVP panel)
 		if not self.viewTitleFrame then
 			local vtf = CreateFrame("Frame", nil, self.mainFrame)
-			vtf:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", MVP_PANEL_WIDTH, 0)
+			vtf:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", 0, 0)
 			vtf:SetPoint("TOPRIGHT", self.mainFrame, "TOPRIGHT", 0, 0)
 			vtf:SetHeight(32)
 			vtf:SetFrameLevel(self.mainFrame:GetFrameLevel() + 20)
 			self.viewTitle = vtf:CreateFontString(nil, "OVERLAY", "MPTFont_Title")
 			self.viewTitle:SetPoint("CENTER", vtf, "CENTER", 0, 4)
+			-- Crown frame for MVP (anchored left of title text, interactive for tooltip)
+			local crownFrame = CreateFrame("Frame", nil, vtf)
+			crownFrame:SetSize(24, 24)
+			crownFrame:SetPoint("RIGHT", self.viewTitle, "LEFT", -4, 0)
+			crownFrame:SetFrameLevel(vtf:GetFrameLevel() + 2)
+			crownFrame:EnableMouse(true)
+			local crownIcon = crownFrame:CreateTexture(nil, "OVERLAY")
+			crownIcon:SetAllPoints()
+			crownIcon:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
+			crownIcon:SetVertexColor(1, 0.85, 0)
+			crownFrame.icon = crownIcon
+			crownFrame:SetScript("OnEnter", function(self)
+				if self.tooltipLines then
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					for _, line in ipairs(self.tooltipLines) do
+						GameTooltip:AddLine(line.text, line.r, line.g, line.b, line.wrap)
+					end
+					GameTooltip:Show()
+				end
+			end)
+			crownFrame:SetScript("OnLeave", function()
+				GameTooltip:Hide()
+			end)
+			crownFrame:Hide()
+			self.viewTitleCrown = crownFrame
 			self.viewTitleFrame = vtf
 		end
 		-- Neutral base color so inline codes work
 		self.viewTitle:SetTextColor(C.textNeutral[1], C.textNeutral[2], C.textNeutral[3])
 		self.viewTitle:SetText(hex .. shortName .. "'s |r" .. goldHex .. "Table|r")
+		-- Crown color coding: gold (mine), blue (party's), green (both)
+		local inLocal = self:MatchMvpName(displayName) or self:MatchMvpName(shortName)
+		local vouchedBy, partyNote = self:CheckPartyMvp(displayName)
+		if not vouchedBy then
+			vouchedBy, partyNote = self:CheckPartyMvp(shortName)
+		end
+		local crown = self.viewTitleCrown
+		if inLocal or vouchedBy then
+			local tooltipLines = {}
+			if inLocal and vouchedBy then
+				crown.icon:SetDesaturated(true)
+				crown.icon:SetVertexColor(0.2, 1, 0.2)
+				table.insert(tooltipLines, { text = "MVP \226\128\148 in your list and " .. vouchedBy .. "'s list", r = 0.2, g = 1, b = 0.2 })
+			elseif inLocal then
+				crown.icon:SetDesaturated(false)
+				crown.icon:SetVertexColor(1, 0.85, 0)
+				table.insert(tooltipLines, { text = "MVP", r = 1, g = 0.85, b = 0 })
+			else
+				crown.icon:SetDesaturated(true)
+				crown.icon:SetVertexColor(0.3, 0.7, 1)
+				table.insert(tooltipLines, { text = "MVP \226\128\148 vouched by " .. vouchedBy, r = 0.3, g = 0.7, b = 1 })
+			end
+			-- Local note
+			if inLocal then
+				local note = self:GetMvpNote(inLocal)
+				if note and note ~= "" then
+					table.insert(tooltipLines, { text = note, r = 1, g = 1, b = 1, wrap = true })
+				end
+			end
+			-- Party member's note
+			if vouchedBy and partyNote and partyNote ~= "" then
+				table.insert(tooltipLines, { text = vouchedBy .. "'s note: " .. partyNote, r = 0.7, g = 0.85, b = 1, wrap = true })
+			end
+			crown.tooltipLines = tooltipLines
+			crown:Show()
+		elseif crown then
+			crown:Hide()
+		end
 		self.viewTitleFrame:Show()
 		self.mainTitle:Hide()
 		if self.tableNameLabel then self.tableNameLabel:Hide() end
@@ -3666,5 +3796,30 @@ function MPT:UpdateViewModeUI()
 		if self.remoteTableListFrame then self.remoteTableListFrame:Hide() end
 		self.remoteTableList = nil
 		self.remoteTableOwner = nil
+	end
+end
+
+function MPT:ToggleMvpPanel()
+	if not self.mainFrame then return end
+	local open = self.db.global.mvpPanelOpen ~= false
+	self:SetMvpPanelOpen(not open)
+end
+
+function MPT:SetMvpPanelOpen(open)
+	if not self.mainFrame then return end
+	self.db.global.mvpPanelOpen = open
+
+	-- Show/hide MVP panel
+	if self.mvpsSidePanel then
+		if open then
+			self.mvpsSidePanel:Show()
+		else
+			self.mvpsSidePanel:Hide()
+		end
+	end
+
+	-- Update arrow direction: « = panel open (collapse), » = panel closed (expand)
+	if self.mvpToggleBtn and self.mvpToggleBtn.arrowLabel then
+		self.mvpToggleBtn.arrowLabel:SetText(open and "\194\171" or "\194\187") -- « or »
 	end
 end
