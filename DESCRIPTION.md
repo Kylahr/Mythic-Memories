@@ -1,27 +1,46 @@
 # Mythic Memories
 
-**Auto-records every M+ run** — dungeon, key level, time, affixes, group comp, and full per-player stats from WoW's built-in damage meter. No setup, no third-party addons needed.
+**Auto-records every M+ run. Just play.**
+
+Open with the minimap button or `/mm`.
 
 ---
 
-**Run Table** — Browse your full M+ history. Click any row to see per-player damage, healing, deaths, interrupts, and more. Sort by any column. Add notes and links to runs.
+## The Table
+- Each row is a recorded run — date, dungeon, level, time, affix, bonus, your role
+- Click a row to see per-player stats (damage, healing, deaths, interrupts, etc.)
+- Right-click a row to favourite, move to another table, or delete it
+- Bonus column is colour-coded: green = timed well, red = depleted
 
-**Tables** — Organize runs into multiple tables. One for mains, one for alts, one for push weeks — whatever works for you.
+## MVPs
+- Click a player name in the stats to mark them as MVP
+- Right-click a name to add a note about them
+- Side panel on the left lists all your MVPs — click one to jump to their most recent run
+- MVPs get crowns in Group Finder: gold = yours, blue = vouched by a party member, green = both
+- Hover any crown for notes
+- You get a popup when an MVP joins your party
 
-**MVP System** — Mark standout players. Add notes. Your MVP list lives in a collapsible side panel with search. Click any name to jump to their most recent run.
+## Player Detection
+- Hover someone in the world — the addon icon in their tooltip means they have Mythic Memories
+- Target them and a button appears — click to view their table, click again to close it
+- Drag the button to move it, X to dismiss
 
-**Group Finder Crowns** — MVPs get a crown icon in the Group Finder applicant list. Your party shares their lists too — blue crowns for their MVPs, green for players you both have.
+## Sharing
+- Right-click a player portrait → "View M+ Table" to browse their runs
+- Import button in the MVP panel copies their MVPs to your list
+- Turn sharing off in Options if you don't want others viewing yours
 
-**World Tooltips** — Hover any player in the world to see if they're an MVP with their note.
+## Tables & Filters
+- Organize runs into multiple tables (e.g. Main, Alts) — gold dot marks which one receives new runs
+- Search by player or realm, or use the filter button for dungeon, level range, affix, bonus, role
+- Star button shows favourites only
 
-**Party Notifications** — Get a popup when an MVP joins your group.
+## Options (cog icon)
+- Share table, MVP alerts, notification sound — all toggleable
+- Three themes: Coffee, Forest, Crimson
+- Reset data
 
-**Table Sharing** — Right-click any player's portrait to browse their run history and import their MVPs. Green bars highlight shared MVPs between your lists.
-
-**Favourites & Filters** — Star your best runs. Filter by player, realm, dungeon, affix, key level, role, and more.
-
-**Three Themes** — Coffee, Forest, and Crimson. Switch in Options.
-
----
-
-`/mm` to open. Minimap button included. A sample run is pre-loaded so you can explore right away.
+## Tips
+- Notifications and the detection button are draggable — they remember where you put them
+- `?` button opens a help panel inside the addon
+- `/mm mvps` lists your MVPs in chat

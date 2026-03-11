@@ -198,7 +198,7 @@ function MPT:OnChallengeModeCompleted()
 	local members = self.activeRun.members
 
 	local runData = {
-		date = date("!%d-%m-%Y"),
+		date = self:FormatDate(),
 		timestamp = time(),
 		dungeon = self.activeRun.dungeon,
 		mapID = self.activeRun.mapID,
@@ -233,7 +233,7 @@ function MPT:SaveFailedRun()
 	local dmStats = self:CollectDamageMeterStats()
 
 	local runData = {
-		date = date("!%d-%m-%Y"),
+		date = self:FormatDate(),
 		timestamp = time(),
 		dungeon = self.activeRun.dungeon,
 		mapID = self.activeRun.mapID,
@@ -332,7 +332,7 @@ function MPT:EndDevRun()
 	end
 
 	local runData = {
-		date = date("!%d-%m-%Y"),
+		date = self:FormatDate(),
 		timestamp = time(),
 		dungeon = self.activeRun.dungeon,
 		mapID = self.activeRun.mapID,

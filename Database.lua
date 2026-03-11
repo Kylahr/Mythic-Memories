@@ -13,6 +13,7 @@ MPT.DB_DEFAULTS = {
 		mvpNotifications = true,
 		mvpSound = true,
 		notificationPos = { point = "TOP", x = 0, y = -200 },
+		scanBtnPos = { point = "CENTER", x = 200, y = -200 },
 		theme = "coffee",
 		mvpPanelOpen = true,
 	},
@@ -456,6 +457,13 @@ end
 
 function MPT:IsFavourite(runId)
 	return self.db.global.favourites and self.db.global.favourites[runId] or false
+end
+
+-- Date format resolved once at load time
+local DATE_FMT = (GetCurrentRegion and GetCurrentRegion() == 1) and "!%m-%d-%Y" or "!%d-%m-%Y"
+
+function MPT:FormatDate(ts)
+	return date(DATE_FMT, ts or time())
 end
 
 function MPT:FormatTime(ms)

@@ -54,10 +54,6 @@ function MPT:HideAllPopups()
 		self._activeDropdown._listFrame:Hide()
 		self._activeDropdown = nil
 	end
-	-- Close notification preview if active
-	if self.notifPreviewActive then
-		self:HideNotificationPreview()
-	end
 end
 
 -- ── Shared scrollable multi-line edit area ────────────────────

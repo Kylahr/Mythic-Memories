@@ -34,7 +34,7 @@ function MPT:LoadSampleRun()
 	local ts = time() - 3600
 	local sampleRun = {
 		id = ts,
-		date = date("!%d-%m-%Y", ts),
+		date = self:FormatDate(ts),
 		timestamp = ts,
 		dungeon = "City of Threads",
 		mapID = 502,
@@ -80,6 +80,7 @@ function MPT:OnEnable()
 	self:GroupFinderHook_Enable()
 	self:HookUnitMenus()
 	self:PartyMvpBrowse_Enable()
+	self:PlayerDetect_Enable()
 end
 
 -- ── Party MVP browse (crown sharing for Group Finder) ───────────
@@ -292,7 +293,7 @@ function MPT:LoadMockData()
 		local ts = now - (mr.daysAgo * day) - (idx * 3600)
 		local runData = {
 			id = ts,
-			date = date("!%d-%m-%Y", ts),
+			date = self:FormatDate(ts),
 			timestamp = ts,
 			dungeon = d.name,
 			mapID = d.mapID,

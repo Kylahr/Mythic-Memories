@@ -239,6 +239,9 @@ function MPT:ApplyTheme(themeKey)
 		self.remoteTableListFrame = nil
 		self.loadingFrame = nil
 		self.moveSubmenu = nil
+		if self.PlayerDetect_DestroyUI then
+			self:PlayerDetect_DestroyUI()
+		end
 		self:CreateMainFrame()
 		self.mainFrame:Show()
 		self:RefreshTable()
@@ -2175,6 +2178,12 @@ function MPT:CreateHelpPanel()
 	addLine(2, "MVPs joining your party trigger a popup notification.")
 	addSpacer(2)
 
+	addHeader(2, "Player Detection")
+	addLine(2, "Hover over a player to see the MM icon in their tooltip if they have the addon.")
+	addLine(2, "Target an addon user and a small button appears — click to view their table.")
+	addLine(2, "Drag the button to reposition it. Click again to close their table. X to dismiss.")
+	addSpacer(2)
+
 	addHeader(2, "Themes & Options")
 	addLine(2, "Colour themes, sharing, notifications, and data reset — all in Options (cog icon).")
 
@@ -2707,6 +2716,16 @@ function MPT:CreateNotificationFrame()
 	f:SetWidth(260)
 	f:EnableMouse(true)
 
+	-- Always draggable — save position on drop
+	f:SetMovable(true)
+	f:RegisterForDrag("LeftButton")
+	f:SetScript("OnDragStart", function(self) self:StartMoving() end)
+	f:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		local point, _, _, x, y = self:GetPoint(1)
+		MPT.db.global.notificationPos = { point = point, x = x, y = y }
+	end)
+
 	-- Hover: pause timer bar and fade
 	f:SetScript("OnEnter", function()
 		if f.fadeTimer then f.fadeTimer:Cancel() end
@@ -2850,91 +2869,6 @@ function MPT:StartNotificationTimer()
 	end)
 end
 
--- Preview frame for positioning
-function MPT:ShowNotificationPreview()
-	local f = self:CreateNotificationFrame()
-
-	-- Cancel any existing timer/fade
-	if f.fadeTimer then f.fadeTimer:Cancel() end
-	f:SetScript("OnUpdate", nil)
-	f:SetAlpha(1)
-
-	-- Clear old lines
-	for _, line in ipairs(f.lines) do
-		line:Hide()
-	end
-
-	local PADDING = 10
-	local yOff = -PADDING - 2
-
-	local header = f.lines[1]
-	if not header then
-		header = f:CreateFontString(nil, "OVERLAY", "MPTFont_Header")
-		f.lines[1] = header
-	end
-	header:ClearAllPoints()
-	header:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 2, yOff)
-	header:SetText("MVP joined")
-	header:Show()
-	yOff = yOff - 16
-
-	local nameLine = f.lines[2]
-	if not nameLine then
-		nameLine = f:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
-		f.lines[2] = nameLine
-	end
-	nameLine:ClearAllPoints()
-	nameLine:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 4, yOff)
-	nameLine:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
-	nameLine:SetJustifyH("LEFT")
-	nameLine:SetText("Preview-Silvermoon")
-	local pR, pG, pB = self:GetClassColor("PALADIN")
-	nameLine:SetTextColor(pR, pG, pB)
-	nameLine:Show()
-	yOff = yOff - 15
-
-	local noteLine = f.lines[3]
-	if not noteLine then
-		noteLine = f:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
-		f.lines[3] = noteLine
-	end
-	noteLine:ClearAllPoints()
-	noteLine:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 8, yOff)
-	noteLine:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
-	noteLine:SetJustifyH("LEFT")
-	noteLine:SetText("Drag to reposition")
-	noteLine:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
-	noteLine:Show()
-	yOff = yOff - 14
-
-	f:SetHeight(math.abs(yOff) + PADDING)
-
-	-- Make draggable
-	f:SetMovable(true)
-	f:RegisterForDrag("LeftButton")
-	f:SetScript("OnDragStart", function(self) self:StartMoving() end)
-	f:SetScript("OnDragStop", function(self)
-		self:StopMovingOrSizing()
-		-- Save position
-		local point, _, _, x, y = self:GetPoint(1)
-		MPT.db.global.notificationPos = { point = point, x = x, y = y }
-	end)
-
-	self.notifPreviewActive = true
-	f:Show()
-end
-
-function MPT:HideNotificationPreview()
-	local f = self.notifFrame
-	if not f then return end
-
-	f:SetMovable(false)
-	f:SetScript("OnDragStart", nil)
-	f:SetScript("OnDragStop", nil)
-	f:Hide()
-	self.notifPreviewActive = false
-end
-
 -- ── Options panel ────────────────────────────────────────────────
 
 function MPT:CreateOptionsPanel()
@@ -2973,24 +2907,10 @@ function MPT:CreateOptionsPanel()
 	end
 	panel.soundCheck = soundCheck
 
-	-- Move Notification button
-	local moveBtn = self:CreateModernButton(panel, 190, 20, "Move Notification")
-	moveBtn:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", -2, -8)
-	moveBtn:SetScript("OnClick", function()
-		if MPT.notifPreviewActive then
-			MPT:HideNotificationPreview()
-			moveBtn.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
-		else
-			MPT:ShowNotificationPreview()
-			moveBtn.label:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
-		end
-	end)
-	panel.moveNotifBtn = moveBtn
-
 	-- Theme divider
 	local themeDiv = panel:CreateTexture(nil, "ARTWORK")
 	themeDiv:SetHeight(1)
-	themeDiv:SetPoint("TOPLEFT", moveBtn, "BOTTOMLEFT", 0, -10)
+	themeDiv:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", -2, -10)
 	themeDiv:SetPoint("RIGHT", panel, "RIGHT", -12, 0)
 	themeDiv:SetColorTexture(C.divider[1], C.divider[2], C.divider[3], 1)
 
@@ -3072,9 +2992,6 @@ function MPT:ToggleOptionsPanel()
 
 	if self.optionsPanel:IsShown() then
 		self.optionsPanel:Hide()
-		if self.notifPreviewActive then
-			self:HideNotificationPreview()
-		end
 	else
 		self:HideAllPopups()
 		self.optionsPanel.shareCheck:SetChecked(self.db.global.shareTable)

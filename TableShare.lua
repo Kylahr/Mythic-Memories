@@ -56,7 +56,21 @@ function MPT:OnCommReceived(prefix, message, distribution, sender)
 	-- Party MVP browse (lightweight name-only list)
 	elseif msgType == "BROWSE_MVPS" then
 		self:OnBrowseMvpsReceived(sender, data)
+	-- Player detect (lightweight presence check)
+	elseif msgType == "PING" then
+		self:OnPingReceived(sender)
+	elseif msgType == "PONG" then
+		self:PlayerDetect_OnPong(sender)
 	end
+end
+
+-- ── Player detect (PING/PONG) ────────────────────────────────────
+
+function MPT:OnPingReceived(sender)
+	-- Only respond if sharing is enabled
+	if self.db.global.shareTable == false then return end
+	local msg = self:Serialize("PONG", {})
+	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
 end
 
 -- ── Table request / response ─────────────────────────────────────
