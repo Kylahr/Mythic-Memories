@@ -62,14 +62,47 @@ end
 
 -- ── Receive PONG ──────────────────────────────────────────────
 
-function MPT:PlayerDetect_OnPong(sender)
+function MPT:PlayerDetect_OnPong(sender, data)
 	local name, realm = sender:match("^([^%-]+)%-?(.*)$")
 	realm = (realm and realm ~= "") and realm or GetRealmName()
 	local nameKey = MakeNameKey(name, realm)
 
-	scanCache[nameKey] = { hasAddon = true, timestamp = GetTime() }
+	local runCount = (data and type(data) == "table" and data.runs) or 0
+	scanCache[nameKey] = { hasAddon = true, runCount = runCount, timestamp = GetTime() }
 
 	self:PlayerDetect_RefreshIfRelevant(nameKey)
+end
+
+-- ── Tooltip helper ────────────────────────────────────────────
+
+local function AddMMTooltipLines(tooltip, nameKey)
+	local entry = GetCacheEntry(nameKey)
+	local hasAddon = entry and entry.hasAddon
+
+	-- Run count line with MM icon (only if player has the addon)
+	if hasAddon then
+		local runs = entry.runCount or 0
+		local runText = runs .. " run" .. (runs == 1 and "" or "s")
+		tooltip:AddLine("|TInterface\\AddOns\\MythicMemories\\icon:14:14:0:0|t " .. runText, 0.7, 0.7, 0.7)
+	end
+
+	-- MVP info — show for any MVP regardless of addon detection
+	local matched = MPT:MatchMvpName(nameKey)
+	if not matched then
+		-- Try name-only match (no realm)
+		local nameOnly = nameKey:match("^([^%-]+)")
+		if nameOnly then matched = MPT:MatchMvpName(nameOnly) end
+	end
+	if matched then
+		local crownIcon = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14:0:0|t"
+		tooltip:AddLine(crownIcon .. " MVP", 1, 0.85, 0)
+		local note = MPT:GetMvpNote(matched)
+		if note and note ~= "" then
+			tooltip:AddLine(note, 0.9, 0.9, 0.9, true)
+		end
+	end
+
+	return hasAddon or (matched ~= nil)
 end
 
 -- ── Tooltip refresh on async PONG ─────────────────────────────
@@ -80,11 +113,7 @@ function MPT:PlayerDetect_RefreshIfRelevant(nameKey)
 		if GameTooltip:IsShown() then
 			local _, unit = GameTooltip:GetUnit()
 			if unit and UnitIsPlayer(unit) then
-				GameTooltip:AddTexture("Interface\\AddOns\\MythicMemories\\icon", {
-					width = 16,
-					height = 16,
-					margin = { left = 0, right = 0, top = 0, bottom = 0 },
-				})
+				AddMMTooltipLines(GameTooltip, nameKey)
 				GameTooltip:Show()
 			end
 		end
@@ -138,14 +167,11 @@ function MPT:PlayerDetect_HookTooltip()
 		lastTooltipUnit = nameKey
 
 		local entry = GetCacheEntry(nameKey)
-		if entry and entry.hasAddon then
-			tooltip:AddTexture("Interface\\AddOns\\MythicMemories\\icon", {
-				width = 16,
-				height = 16,
-				margin = { left = 0, right = 0, top = 0, bottom = 0 },
-			})
+		local added = AddMMTooltipLines(tooltip, nameKey)
+		if added then
 			tooltip:Show()
-		elseif not entry then
+		end
+		if not entry then
 			self:PlayerDetect_SendPing(name, realm)
 		end
 	end

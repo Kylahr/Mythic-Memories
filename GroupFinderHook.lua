@@ -9,8 +9,6 @@ function MPT:GroupFinderHook_Enable()
 		self:RegisterEvent("ADDON_LOADED", "OnGroupFinderAddonLoaded")
 	end
 
-	-- Hook world tooltip to show MVP info when hovering players
-	self:HookWorldTooltip()
 end
 
 function MPT:OnGroupFinderAddonLoaded(event, addonName)
@@ -413,50 +411,3 @@ function MPT:UpdateSearchResultCrown(frame)
 	crown:Show()
 end
 
--- ── World tooltip: show MVP status when hovering players ─────
-
-function MPT:HookWorldTooltip()
-	if self._worldTooltipHooked then return end
-	self._worldTooltipHooked = true
-
-	local function OnTooltipSetUnit(tooltip)
-		if tooltip ~= GameTooltip then return end
-		local _, unit = tooltip:GetUnit()
-		if not unit then return end
-		-- Safety: unit can be a secret/tainted value in some contexts
-		local ok, isPlayer = pcall(UnitIsPlayer, unit)
-		if not ok or not isPlayer then return end
-
-		local name, realm = UnitName(unit)
-		if not name then return end
-		if not realm or realm == "" then
-			realm = GetRealmName()
-		end
-		local nameRealm = name .. "-" .. realm
-
-		-- Check if this player is an MVP
-		local matched = MPT:MatchMvpName(nameRealm) or MPT:MatchMvpName(name)
-		if not matched then return end
-
-		-- Add MVP line with crown icon (texture escape sequence)
-		local crownIcon = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14:0:0|t"
-		tooltip:AddLine(" ")
-		tooltip:AddLine(crownIcon .. " MVP", 1, 0.85, 0)
-
-		-- Add note if present
-		local note = MPT:GetMvpNote(matched)
-		if note and note ~= "" then
-			tooltip:AddLine(note, 1, 1, 1, true)
-		end
-
-		tooltip:Show()
-	end
-
-	-- TooltipDataProcessor is the correct retail API (10.0+)
-	-- OnTooltipSetUnit does NOT fire in retail
-	if TooltipDataProcessor and Enum and Enum.TooltipDataType then
-		TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnTooltipSetUnit)
-	else
-		GameTooltip:HookScript("OnTooltipSetUnit", OnTooltipSetUnit)
-	end
-end

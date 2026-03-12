@@ -3171,8 +3171,9 @@ function MPT:RefreshTableManagerList()
 	self.tableManagerRows = {}
 
 	local tables = self.db.global.tables
-	local activeIdx = self.db.global.activeTableIndex or 1
+	local activeIdx = self:GetActiveTableIndex()
 	local viewedIdx = self:GetViewedTableIndex()
+	local charActiveMap = self:GetCharActiveMap()
 	local ROW_H = 30
 
 	for i, tbl in ipairs(tables) do
@@ -3195,7 +3196,7 @@ function MPT:RefreshTableManagerList()
 		row.rowBg = rowBg
 		row._isViewed = isViewed
 
-		-- Active indicator (gold dot — marks where new runs go)
+		-- Active indicator (gold dot — marks where THIS character's runs go)
 		local dot = row:CreateTexture(nil, "ARTWORK")
 		dot:SetSize(8, 8)
 		dot:SetPoint("LEFT", row, "LEFT", 6, 0)
@@ -3215,6 +3216,8 @@ function MPT:RefreshTableManagerList()
 			nameText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
 		end
 		row.nameText = nameText
+
+		local charNames = charActiveMap[i]
 
 		-- Run count
 		local countText = row:CreateFontString(nil, "OVERLAY", "MPTFont_Small")
@@ -3242,16 +3245,27 @@ function MPT:RefreshTableManagerList()
 		end)
 		if #tables <= 1 then delBtn:Hide() end
 
-		-- Hover effect
+		-- Hover: show tooltip with character assignments in class colors
 		row:SetScript("OnEnter", function()
 			if not row._isViewed then
 				rowBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.10)
+			end
+			if charNames and #charNames > 0 then
+				GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+				GameTooltip:AddLine(tbl.name, C.accent[1], C.accent[2], C.accent[3])
+				GameTooltip:AddLine("Active on:", C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+				for _, info in ipairs(charNames) do
+					local r, g, b = MPT:GetClassColor(info.class)
+					GameTooltip:AddLine("  " .. info.name, r, g, b)
+				end
+				GameTooltip:Show()
 			end
 		end)
 		row:SetScript("OnLeave", function()
 			if not row._isViewed then
 				rowBg:SetColorTexture(0, 0, 0, 0)
 			end
+			GameTooltip:Hide()
 		end)
 
 		-- Left-click to view table, right-click for context menu
@@ -3274,8 +3288,17 @@ function MPT:ShowTableRowContextMenu(anchor, tableIndex, tableName)
 		self.tableRowContextMenu:Hide()
 	end
 
-	local isAlreadyActive = (tableIndex == (self.db.global.activeTableIndex or 1))
-	local menuHeight = isAlreadyActive and 26 or 48
+	local isAlreadyActive = (tableIndex == self:GetActiveTableIndex())
+	local numTables = #self.db.global.tables
+	local canMoveUp = tableIndex > 1
+	local canMoveDown = tableIndex < numTables
+
+	-- Calculate menu height based on visible options
+	local itemCount = 1 -- Rename is always shown
+	if not isAlreadyActive then itemCount = itemCount + 1 end
+	if canMoveUp then itemCount = itemCount + 1 end
+	if canMoveDown then itemCount = itemCount + 1 end
+	local menuHeight = itemCount * 22 + 4
 
 	local menu = CreateFrame("Frame", nil, self.mainFrame)
 	menu:SetSize(140, menuHeight)
@@ -3285,11 +3308,12 @@ function MPT:ShowTableRowContextMenu(anchor, tableIndex, tableName)
 	bg:SetAllPoints()
 	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
 
-	local function createCtxBtn(yOffset, label, textColor, onClick)
+	local yOff = -2
+	local function createCtxBtn(label, textColor, onClick)
 		local btn = CreateFrame("Button", nil, menu)
 		btn:SetHeight(22)
-		btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, yOffset)
-		btn:SetPoint("TOPRIGHT", menu, "TOPRIGHT", 0, yOffset)
+		btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, yOff)
+		btn:SetPoint("TOPRIGHT", menu, "TOPRIGHT", 0, yOff)
 		local btnText = btn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
 		btnText:SetPoint("LEFT", 10, 0)
 		btnText:SetText(label)
@@ -3307,21 +3331,32 @@ function MPT:ShowTableRowContextMenu(anchor, tableIndex, tableName)
 			menu:Hide()
 			onClick()
 		end)
+		yOff = yOff - 22
 		return btn
 	end
 
-	-- "Set Active" only if not already active
 	if not isAlreadyActive then
-		createCtxBtn(-2, "Set Active", C.textPrimary, function()
+		createCtxBtn("Set Active", C.textPrimary, function()
 			MPT:SetActiveTable(tableIndex)
 			MPT:RefreshTableManagerList()
 		end)
-		createCtxBtn(-24, "Rename", C.textPrimary, function()
-			MPT:StartInlineRename(tableIndex)
+	end
+
+	createCtxBtn("Rename", C.textPrimary, function()
+		MPT:StartInlineRename(tableIndex)
+	end)
+
+	if canMoveUp then
+		createCtxBtn("Move Up", C.textMuted, function()
+			MPT:SwapTables(tableIndex, tableIndex - 1)
+			MPT:RefreshTableManagerList()
 		end)
-	else
-		createCtxBtn(-2, "Rename", C.textPrimary, function()
-			MPT:StartInlineRename(tableIndex)
+	end
+
+	if canMoveDown then
+		createCtxBtn("Move Down", C.textMuted, function()
+			MPT:SwapTables(tableIndex, tableIndex + 1)
+			MPT:RefreshTableManagerList()
 		end)
 	end
 

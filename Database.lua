@@ -6,7 +6,8 @@ MPT.DB_DEFAULTS = {
 		tables = {
 			{ name = "All Runs", runs = {} },
 		},
-		activeTableIndex = 1,
+		activeTableIndex = 1, -- legacy, kept for migration
+		charActiveTable = {}, -- { ["Name-Realm"] = index }
 		mvps = {},
 		favourites = {},
 		shareTable = true,
@@ -16,8 +17,20 @@ MPT.DB_DEFAULTS = {
 		scanBtnPos = { point = "CENTER", x = 200, y = -200 },
 		theme = "coffee",
 		mvpPanelOpen = true,
+		totalRuns = 0,
 	},
 }
+
+-- Migration: count total runs across all tables
+function MPT:MigrateTotalRuns()
+	if self.db.global.totalRunsMigrated then return end
+	local total = 0
+	for _, tbl in ipairs(self.db.global.tables or {}) do
+		total = total + #tbl.runs
+	end
+	self.db.global.totalRuns = total
+	self.db.global.totalRunsMigrated = true
+end
 
 -- Migration: wrap flat db.global.runs into tables[1]
 function MPT:MigrateToTables()
@@ -31,16 +44,54 @@ function MPT:MigrateToTables()
 end
 
 ------------------------------------------------------------
+-- Character key for per-char active table
+------------------------------------------------------------
+function MPT:GetCharKey()
+	local name = UnitName("player") or "Unknown"
+	local realm = GetRealmName() or "Unknown"
+	return name .. "-" .. realm
+end
+
+-- Migration: move legacy global activeTableIndex into charActiveTable
+function MPT:MigrateCharActiveTable()
+	local g = self.db.global
+	if not g.charActiveTable then g.charActiveTable = {} end
+	local charKey = self:GetCharKey()
+	local _, classFile = UnitClass("player")
+	local entry = g.charActiveTable[charKey]
+	-- Migrate old format (plain number) to new format (table with index + class)
+	if type(entry) == "number" then
+		g.charActiveTable[charKey] = { index = entry, class = classFile }
+		entry = g.charActiveTable[charKey]
+	end
+	if not entry then
+		local legacy = g.activeTableIndex or 1
+		if not g.tables[legacy] then legacy = 1 end
+		g.charActiveTable[charKey] = { index = legacy, class = classFile }
+		entry = g.charActiveTable[charKey]
+	end
+	-- Always update class (may have been nil on old entries)
+	entry.class = classFile
+	-- Clamp if index is out of range
+	if not g.tables[entry.index] then
+		entry.index = 1
+	end
+end
+
+------------------------------------------------------------
 -- Table accessors
 ------------------------------------------------------------
+function MPT:GetActiveTableIndex()
+	local g = self.db.global
+	local charKey = self:GetCharKey()
+	local entry = g.charActiveTable and g.charActiveTable[charKey]
+	local idx = (type(entry) == "table" and entry.index) or 1
+	if not g.tables[idx] then idx = 1 end
+	return idx
+end
+
 function MPT:GetActiveTable()
-	local idx = self.db.global.activeTableIndex or 1
-	local tbl = self.db.global.tables[idx]
-	if not tbl then
-		self.db.global.activeTableIndex = 1
-		tbl = self.db.global.tables[1]
-	end
-	return tbl
+	return self.db.global.tables[self:GetActiveTableIndex()]
 end
 
 function MPT:GetActiveRuns()
@@ -49,7 +100,7 @@ end
 
 -- Viewed table: which table is currently displayed (transient, not saved)
 function MPT:GetViewedTableIndex()
-	local idx = self.viewedTableIndex or self.db.global.activeTableIndex or 1
+	local idx = self.viewedTableIndex or self:GetActiveTableIndex()
 	if not self.db.global.tables[idx] then idx = 1 end
 	return idx
 end
@@ -95,23 +146,30 @@ end
 function MPT:DeleteTable(index)
 	local tables = self.db.global.tables
 	if #tables <= 1 then return false end
-	-- Clean orphaned favourites
+	-- Clean orphaned favourites and decrement total run count
+	local removedCount = #tables[index].runs
 	for _, run in ipairs(tables[index].runs) do
 		if self.db.global.favourites then
 			self.db.global.favourites[run.id] = nil
 		end
 	end
 	table.remove(tables, index)
-	local active = self.db.global.activeTableIndex
-	if active == index then
-		self.db.global.activeTableIndex = math.max(1, index - 1)
-	elseif active > index then
-		self.db.global.activeTableIndex = active - 1
+	self.db.global.totalRuns = math.max(0, (self.db.global.totalRuns or 0) - removedCount)
+	-- Adjust all per-character active table indices
+	local cat = self.db.global.charActiveTable or {}
+	for charKey, entry in pairs(cat) do
+		if type(entry) == "table" then
+			if entry.index == index then
+				entry.index = math.max(1, index - 1)
+			elseif entry.index > index then
+				entry.index = entry.index - 1
+			end
+		end
 	end
 	-- Fix viewedTableIndex too
 	if self.viewedTableIndex then
 		if self.viewedTableIndex == index then
-			self.viewedTableIndex = self.db.global.activeTableIndex
+			self.viewedTableIndex = self:GetActiveTableIndex()
 		elseif self.viewedTableIndex > index then
 			self.viewedTableIndex = self.viewedTableIndex - 1
 		end
@@ -121,8 +179,57 @@ end
 
 function MPT:SetActiveTable(index)
 	if not self.db.global.tables[index] then return false end
-	self.db.global.activeTableIndex = index
+	local charKey = self:GetCharKey()
+	if not self.db.global.charActiveTable then self.db.global.charActiveTable = {} end
+	local entry = self.db.global.charActiveTable[charKey]
+	if type(entry) == "table" then
+		entry.index = index
+	else
+		local _, classFile = UnitClass("player")
+		self.db.global.charActiveTable[charKey] = { index = index, class = classFile }
+	end
 	return true
+end
+
+-- Reorder: swap table at index with table at targetIndex
+function MPT:SwapTables(fromIndex, toIndex)
+	local tables = self.db.global.tables
+	if not tables[fromIndex] or not tables[toIndex] then return false end
+	tables[fromIndex], tables[toIndex] = tables[toIndex], tables[fromIndex]
+	-- Update all per-character active table indices to follow the swap
+	local cat = self.db.global.charActiveTable or {}
+	for charKey, entry in pairs(cat) do
+		if type(entry) == "table" then
+			if entry.index == fromIndex then
+				entry.index = toIndex
+			elseif entry.index == toIndex then
+				entry.index = fromIndex
+			end
+		end
+	end
+	-- Update viewedTableIndex to follow the swap
+	if self.viewedTableIndex then
+		if self.viewedTableIndex == fromIndex then
+			self.viewedTableIndex = toIndex
+		elseif self.viewedTableIndex == toIndex then
+			self.viewedTableIndex = fromIndex
+		end
+	end
+	return true
+end
+
+-- Get map of table index -> list of { name, class } that have it active
+function MPT:GetCharActiveMap()
+	local result = {}
+	local cat = self.db.global.charActiveTable or {}
+	for charKey, entry in pairs(cat) do
+		local idx = type(entry) == "table" and entry.index or entry
+		local class = type(entry) == "table" and entry.class or nil
+		if not result[idx] then result[idx] = {} end
+		local name = charKey:match("^([^%-]+)") or charKey
+		result[idx][#result[idx] + 1] = { name = name, class = class }
+	end
+	return result
 end
 
 function MPT:ViewTable(index)
@@ -153,6 +260,7 @@ end
 function MPT:AddRun(runData)
 	runData.id = runData.id or time()
 	table.insert(self:GetActiveRuns(), 1, runData)
+	self.db.global.totalRuns = (self.db.global.totalRuns or 0) + 1
 	return runData
 end
 
@@ -330,6 +438,7 @@ function MPT:DeleteRun(id)
 			if self.db.global.favourites then
 				self.db.global.favourites[id] = nil
 			end
+			self.db.global.totalRuns = math.max(0, (self.db.global.totalRuns or 0) - 1)
 			return true
 		end
 	end
@@ -499,7 +608,9 @@ end
 function MPT:ResetData(resetRuns, resetMvps)
 	local parts = {}
 	if resetRuns then
+		local removedCount = #self:GetViewedTable().runs
 		self:GetViewedTable().runs = {}
+		self.db.global.totalRuns = math.max(0, (self.db.global.totalRuns or 0) - removedCount)
 		parts[#parts + 1] = "runs"
 	end
 	if resetMvps then

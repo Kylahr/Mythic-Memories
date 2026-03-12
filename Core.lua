@@ -6,6 +6,8 @@ function MPT:OnInitialize()
 	self.db = LibStub("AceDB-3.0"):New("MythicMemoriesDB", self.DB_DEFAULTS)
 	self:MigrateToTables()
 	self:MigrateMvpKeys()
+	self:MigrateTotalRuns()
+	self:MigrateCharActiveTable()
 	self:LoadSampleRun()
 
 	self:RegisterChatCommand("mm", "SlashCommand")
