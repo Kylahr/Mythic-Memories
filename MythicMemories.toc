@@ -1,6 +1,6 @@
 ## Interface: 120001
 ## Title: Mythic Memories
-## Version: 2.0.2
+## Version: 2.0.4
 ## Author: Kylahr
 ## Notes: Auto-records Mythic+ runs with per-player stats and MVP tracking
 ## IconTexture: Interface\AddOns\MythicMemories\icon

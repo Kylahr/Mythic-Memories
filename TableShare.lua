@@ -569,9 +569,38 @@ function MPT:HookUnitMenus()
 			end)
 
 			local nameRealm = name .. "-" .. server
-			-- UnitClass needs a unitId, not a name; try the owner's unit or mouseover
+			-- UnitClass needs a unitId; try owner's unit, mouseover, then scan party/raid
 			local unit = owner and not owner:IsForbidden() and owner.GetAttribute and owner:GetAttribute("unit")
 			local _, class = UnitClass(unit or "mouseover")
+			if not class then
+				-- Scan party/raid units to find this player's class
+				local prefix = IsInRaid() and "raid" or "party"
+				local count = IsInRaid() and GetNumGroupMembers() or GetNumGroupMembers() - 1
+				for ci = 1, count do
+					local uid = prefix .. ci
+					local uName, uRealm = UnitName(uid)
+					if uName == name then
+						_, class = UnitClass(uid)
+						break
+					end
+				end
+			end
+			if not class then
+				-- Fall back to run history
+				for _, tbl in ipairs(MPT.db.global.tables) do
+					for _, run in ipairs(tbl.runs) do
+						for _, m in ipairs(run.members or {}) do
+							local mName = m.name:match("^([^%-]+)") or m.name
+							if mName == name and m.class then
+								class = m.class
+								break
+							end
+						end
+						if class then break end
+					end
+					if class then break end
+				end
+			end
 
 			local matchedMvp = MPT:MatchMvpName(nameRealm)
 			if matchedMvp then
