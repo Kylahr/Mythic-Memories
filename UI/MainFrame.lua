@@ -1904,23 +1904,24 @@ function MPT:RefreshMvpsSidePanel()
 		end
 
 		-- Shared MVP right bar (green = you or a party member also has this MVP)
-		local vouchedBy, partyNote = self:CheckPartyMvp(nameRealm)
+		local vouches = self:CheckPartyMvp(nameRealm)
+		local vouchedBy = vouches[1] and vouches[1].sender or nil
 		if not vouchedBy and isViewing then
 			local normalized = self:NormalizeNameRealm(nameRealm)
 			local localMvps = self.db.global.mvps or {}
 			if localMvps[normalized] then
 				vouchedBy = "you"
-				partyNote = localMvps[normalized].note
+				vouches = { { sender = "you", note = localMvps[normalized].note } }
 			end
 		end
 		if vouchedBy and bubble.rightBar then
 			bubble.rightBar:Show()
 			bubble.vouchedBy = vouchedBy
-			bubble.partyNote = partyNote
+			bubble.vouches = vouches
 		elseif bubble.rightBar then
 			bubble.rightBar:Hide()
 			bubble.vouchedBy = nil
-			bubble.partyNote = nil
+			bubble.vouches = nil
 		end
 
 		-- Tooltip with note on hover
@@ -1941,16 +1942,18 @@ function MPT:RefreshMvpsSidePanel()
 					GameTooltip:AddLine(" ")
 				end
 			end
-			if self.vouchedBy then
-				if self.vouchedBy == "you" then
-					GameTooltip:AddLine("Also in your list", 0.2, 1, 0.2)
-					if self.partyNote and self.partyNote ~= "" then
-						GameTooltip:AddLine("Your note: " .. self.partyNote, 0.7, 0.85, 1, true)
-					end
-				else
-					GameTooltip:AddLine("Also in " .. self.vouchedBy .. "'s list", 0.2, 1, 0.2)
-					if self.partyNote and self.partyNote ~= "" then
-						GameTooltip:AddLine(self.vouchedBy .. "'s note: " .. self.partyNote, 0.7, 0.85, 1, true)
+			if self.vouches and #self.vouches > 0 then
+				for _, v in ipairs(self.vouches) do
+					if v.sender == "you" then
+						GameTooltip:AddLine("Also in your list", 0.2, 1, 0.2)
+						if v.note and v.note ~= "" then
+							GameTooltip:AddLine("Your note: " .. v.note, 0.7, 0.85, 1, true)
+						end
+					else
+						GameTooltip:AddLine("Also in " .. v.sender .. "'s list", 0.2, 1, 0.2)
+						if v.note and v.note ~= "" then
+							GameTooltip:AddLine(v.sender .. "'s note: " .. v.note, 0.7, 0.85, 1, true)
+						end
 					end
 				end
 				GameTooltip:AddLine(" ")
@@ -3682,17 +3685,20 @@ function MPT:UpdateViewModeUI()
 		self.viewTitle:SetText(hex .. shortName .. "'s |r" .. goldHex .. "Table|r")
 		-- Crown color coding: gold (mine), blue (party's), green (both)
 		local inLocal = self:MatchMvpName(displayName) or self:MatchMvpName(shortName)
-		local vouchedBy, partyNote = self:CheckPartyMvp(displayName)
-		if not vouchedBy then
-			vouchedBy, partyNote = self:CheckPartyMvp(shortName)
+		local vouches = self:CheckPartyMvp(displayName)
+		if #vouches == 0 then
+			vouches = self:CheckPartyMvp(shortName)
 		end
+		local vouchedBy = vouches[1] and vouches[1].sender or nil
 		local crown = self.viewTitleCrown
 		if inLocal or vouchedBy then
 			local tooltipLines = {}
 			if inLocal and vouchedBy then
 				crown.icon:SetDesaturated(true)
 				crown.icon:SetVertexColor(0.2, 1, 0.2)
-				table.insert(tooltipLines, { text = "MVP \226\128\148 in your list and " .. vouchedBy .. "'s list", r = 0.2, g = 1, b = 0.2 })
+				local names = {}
+				for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+				table.insert(tooltipLines, { text = "MVP \226\128\148 in your list and " .. table.concat(names, ", ") .. "'s list", r = 0.2, g = 1, b = 0.2 })
 			elseif inLocal then
 				crown.icon:SetDesaturated(false)
 				crown.icon:SetVertexColor(1, 0.85, 0)
@@ -3700,7 +3706,9 @@ function MPT:UpdateViewModeUI()
 			else
 				crown.icon:SetDesaturated(true)
 				crown.icon:SetVertexColor(0.3, 0.7, 1)
-				table.insert(tooltipLines, { text = "MVP \226\128\148 vouched by " .. vouchedBy, r = 0.3, g = 0.7, b = 1 })
+				local names = {}
+				for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+				table.insert(tooltipLines, { text = "MVP \226\128\148 vouched by " .. table.concat(names, ", "), r = 0.3, g = 0.7, b = 1 })
 			end
 			-- Local note
 			if inLocal then
@@ -3709,9 +3717,11 @@ function MPT:UpdateViewModeUI()
 					table.insert(tooltipLines, { text = note, r = 1, g = 1, b = 1, wrap = true })
 				end
 			end
-			-- Party member's note
-			if vouchedBy and partyNote and partyNote ~= "" then
-				table.insert(tooltipLines, { text = vouchedBy .. "'s note: " .. partyNote, r = 0.7, g = 0.85, b = 1, wrap = true })
+			-- Party members' notes
+			for _, v in ipairs(vouches) do
+				if v.note and v.note ~= "" then
+					table.insert(tooltipLines, { text = v.sender .. "'s note: " .. v.note, r = 0.7, g = 0.85, b = 1, wrap = true })
+				end
 			end
 			crown.tooltipLines = tooltipLines
 			crown:Show()

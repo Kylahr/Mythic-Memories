@@ -512,25 +512,31 @@ function MPT:PurgePartyMvpCache()
 end
 
 function MPT:CheckPartyMvp(leaderName)
-	-- Returns senderName, note (or nil, nil)
-	if not leaderName then return nil, nil end
+	-- Returns list of { sender, note } tables (empty table if no matches)
+	if not leaderName then return {} end
 	leaderName = self:NormalizeNameRealm(leaderName)
+	local leaderBase = leaderName:match("^([^%-]+)")
 
+	local results = {}
 	for sender, mvpList in pairs(self.partyMvpCache) do
+		local found = false
 		-- Check exact match
 		if mvpList[leaderName] ~= nil then
-			return sender, mvpList[leaderName]
+			results[#results + 1] = { sender = sender, note = mvpList[leaderName] }
+			found = true
 		end
 		-- Check base name match (leader might be "Name" or "Name-Realm")
-		for mvpName, note in pairs(mvpList) do
-			local mvpBase = mvpName:match("^([^%-]+)")
-			local leaderBase = leaderName:match("^([^%-]+)")
-			if mvpBase and leaderBase and mvpBase == leaderBase then
-				return sender, note
+		if not found and leaderBase then
+			for mvpName, note in pairs(mvpList) do
+				local mvpBase = mvpName:match("^([^%-]+)")
+				if mvpBase and mvpBase == leaderBase then
+					results[#results + 1] = { sender = sender, note = note }
+					break
+				end
 			end
 		end
 	end
-	return nil, nil
+	return results
 end
 
 -- ── Unit menu hook (TWW 11.x Menu API) ──────────────────────────

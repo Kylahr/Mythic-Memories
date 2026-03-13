@@ -82,17 +82,21 @@ function MPT:HookMemberFrame(memberFrame)
 	memberFrame:HookScript("OnEnter", function(self)
 		local nr = self.mptMvpName
 		local vouchedBy = self.mptVouchedBy
-		local partyNote = self.mptPartyNote
+		local vouches = self.mptVouches or {}
 		if not nr and not vouchedBy then return end
 		GameTooltip:AddLine(" ")
 		if nr and vouchedBy then
 			GameTooltip:AddLine("MVP", 0.2, 1, 0.2)
-			GameTooltip:AddLine("In your list and " .. vouchedBy .. "'s list", 0.8, 0.8, 0.8, true)
+			local names = {}
+			for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+			GameTooltip:AddLine("In your list and " .. table.concat(names, ", ") .. "'s list", 0.8, 0.8, 0.8, true)
 		elseif nr then
 			GameTooltip:AddLine("MVP", 1, 0.85, 0)
 		else
 			GameTooltip:AddLine("MVP", 0.3, 0.7, 1)
-			GameTooltip:AddLine("Vouched by " .. vouchedBy, 0.8, 0.8, 0.8, true)
+			local names = {}
+			for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+			GameTooltip:AddLine("Vouched by " .. table.concat(names, ", "), 0.8, 0.8, 0.8, true)
 		end
 		if nr then
 			local note = MPT:GetMvpNote(nr)
@@ -100,8 +104,10 @@ function MPT:HookMemberFrame(memberFrame)
 				GameTooltip:AddLine(note, 1, 1, 1, true)
 			end
 		end
-		if partyNote and partyNote ~= "" then
-			GameTooltip:AddLine(vouchedBy .. "'s note: " .. partyNote, 0.7, 0.85, 1, true)
+		for _, v in ipairs(vouches) do
+			if v.note and v.note ~= "" then
+				GameTooltip:AddLine(v.sender .. "'s note: " .. v.note, 0.7, 0.85, 1, true)
+			end
 		end
 		GameTooltip:Show()
 	end)
@@ -190,7 +196,8 @@ function MPT:MarkMvpInLFG(memberFrame, appID, memberIdx)
 	end
 
 	local inLocal = self:MatchMvpName(name)
-	local vouchedBy, partyNote = self:CheckPartyMvp(name)
+	local vouches = self:CheckPartyMvp(name)
+	local vouchedBy = vouches[1] and vouches[1].sender or nil
 
 	if not inLocal and not vouchedBy then
 		self:HideMvpMark(memberFrame)
@@ -199,13 +206,14 @@ function MPT:MarkMvpInLFG(memberFrame, appID, memberIdx)
 
 	memberFrame.mptMvpName = inLocal
 	memberFrame.mptVouchedBy = vouchedBy
-	memberFrame.mptPartyNote = partyNote
+	memberFrame.mptVouches = vouches
 	self:ApplyMvpStar(memberFrame, inLocal, vouchedBy)
 end
 
 function MPT:HideMvpMark(memberFrame)
 	memberFrame.mptMvpName = nil
 	memberFrame.mptVouchedBy = nil
+	memberFrame.mptVouches = nil
 	if memberFrame.mptStar then memberFrame.mptStar:Hide() end
 end
 
@@ -315,7 +323,8 @@ function MPT:UpdateSearchResultCrown(frame)
 	-- Check local MVP list
 	local inLocal = self:MatchMvpName(leaderName)
 	-- Check party members' MVP lists
-	local vouchedBy, partyNote = self:CheckPartyMvp(leaderName)
+	local vouches = self:CheckPartyMvp(leaderName)
+	local vouchedBy = vouches[1] and vouches[1].sender or nil
 
 	if not inLocal and not vouchedBy then
 		if frame.mptCrown then frame.mptCrown:Hide() end
@@ -353,18 +362,24 @@ function MPT:UpdateSearchResultCrown(frame)
 			GameTooltip:AddLine(info.leaderName, info.classR, info.classG, info.classB)
 			if info.inLocal and info.vouchedBy then
 				GameTooltip:AddLine("MVP", 0.2, 1, 0.2)
-				GameTooltip:AddLine("In your list and " .. info.vouchedBy .. "'s list", 0.8, 0.8, 0.8, true)
+				local names = {}
+				for _, v in ipairs(info.vouches) do names[#names + 1] = v.sender end
+				GameTooltip:AddLine("In your list and " .. table.concat(names, ", ") .. "'s list", 0.8, 0.8, 0.8, true)
 			elseif info.inLocal then
 				GameTooltip:AddLine("MVP", 1, 0.85, 0)
 			else
 				GameTooltip:AddLine("MVP", 0.3, 0.7, 1)
-				GameTooltip:AddLine("Vouched by " .. info.vouchedBy, 0.8, 0.8, 0.8, true)
+				local names = {}
+				for _, v in ipairs(info.vouches) do names[#names + 1] = v.sender end
+				GameTooltip:AddLine("Vouched by " .. table.concat(names, ", "), 0.8, 0.8, 0.8, true)
 			end
 			if info.localNote and info.localNote ~= "" then
 				GameTooltip:AddLine(info.localNote, 1, 1, 1, true)
 			end
-			if info.partyNote and info.partyNote ~= "" then
-				GameTooltip:AddLine(info.vouchedBy .. "'s note: " .. info.partyNote, 0.7, 0.85, 1, true)
+			for _, v in ipairs(info.vouches) do
+				if v.note and v.note ~= "" then
+					GameTooltip:AddLine(v.sender .. "'s note: " .. v.note, 0.7, 0.85, 1, true)
+				end
 			end
 			GameTooltip:Show()
 		end)
@@ -379,8 +394,8 @@ function MPT:UpdateSearchResultCrown(frame)
 		classB = classB,
 		inLocal = inLocal,
 		vouchedBy = vouchedBy,
+		vouches = vouches,
 		localNote = localNote,
-		partyNote = partyNote,
 	}
 
 	-- Set color based on who has them as MVP
@@ -390,7 +405,9 @@ function MPT:UpdateSearchResultCrown(frame)
 	if inLocal and vouchedBy then
 		crown.icon:SetDesaturated(true)
 		crown.icon:SetVertexColor(0.2, 1, 0.2)
-		tooltipLines[#tooltipLines + 1] = { text = "MVP — in your list and " .. vouchedBy .. "'s list", r = 0.2, g = 1, b = 0.2, wrap = true }
+		local names = {}
+		for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+		tooltipLines[#tooltipLines + 1] = { text = "MVP — in your list and " .. table.concat(names, ", ") .. "'s list", r = 0.2, g = 1, b = 0.2, wrap = true }
 	elseif inLocal then
 		crown.icon:SetDesaturated(false)
 		crown.icon:SetVertexColor(1, 0.85, 0)
@@ -398,13 +415,17 @@ function MPT:UpdateSearchResultCrown(frame)
 	else
 		crown.icon:SetDesaturated(true)
 		crown.icon:SetVertexColor(0.3, 0.7, 1)
-		tooltipLines[#tooltipLines + 1] = { text = "MVP — vouched by " .. vouchedBy, r = 0.3, g = 0.7, b = 1, wrap = true }
+		local names = {}
+		for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+		tooltipLines[#tooltipLines + 1] = { text = "MVP — vouched by " .. table.concat(names, ", "), r = 0.3, g = 0.7, b = 1, wrap = true }
 	end
 	if localNote and localNote ~= "" then
 		tooltipLines[#tooltipLines + 1] = { text = localNote, r = 1, g = 1, b = 1, wrap = true }
 	end
-	if partyNote and partyNote ~= "" then
-		tooltipLines[#tooltipLines + 1] = { text = vouchedBy .. "'s note: " .. partyNote, r = 0.7, g = 0.85, b = 1, wrap = true }
+	for _, v in ipairs(vouches) do
+		if v.note and v.note ~= "" then
+			tooltipLines[#tooltipLines + 1] = { text = v.sender .. "'s note: " .. v.note, r = 0.7, g = 0.85, b = 1, wrap = true }
+		end
 	end
 
 	crown.mptTooltipLines = tooltipLines

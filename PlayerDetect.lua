@@ -89,20 +89,41 @@ local function AddMMTooltipLines(tooltip, nameKey)
 	-- MVP info — show for any MVP regardless of addon detection
 	local matched = MPT:MatchMvpName(nameKey)
 	if not matched then
-		-- Try name-only match (no realm)
 		local nameOnly = nameKey:match("^([^%-]+)")
 		if nameOnly then matched = MPT:MatchMvpName(nameOnly) end
 	end
-	if matched then
+	local vouches = MPT:CheckPartyMvp(nameKey)
+	local vouchedBy = vouches[1] and vouches[1].sender or nil
+
+	if matched or vouchedBy then
 		local crownIcon = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14:0:0|t"
-		tooltip:AddLine(crownIcon .. " MVP", 1, 0.85, 0)
-		local note = MPT:GetMvpNote(matched)
-		if note and note ~= "" then
-			tooltip:AddLine(note, 0.9, 0.9, 0.9, true)
+		if matched and vouchedBy then
+			local names = {}
+			for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+			tooltip:AddLine(crownIcon .. " MVP", 0.2, 1, 0.2)
+			tooltip:AddLine("In your list and " .. table.concat(names, ", ") .. "'s list", 0.8, 0.8, 0.8, true)
+		elseif matched then
+			tooltip:AddLine(crownIcon .. " MVP", 1, 0.85, 0)
+		else
+			local names = {}
+			for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+			tooltip:AddLine(crownIcon .. " MVP", 0.3, 0.7, 1)
+			tooltip:AddLine("Vouched by " .. table.concat(names, ", "), 0.8, 0.8, 0.8, true)
+		end
+		if matched then
+			local note = MPT:GetMvpNote(matched)
+			if note and note ~= "" then
+				tooltip:AddLine(note, 0.9, 0.9, 0.9, true)
+			end
+		end
+		for _, v in ipairs(vouches) do
+			if v.note and v.note ~= "" then
+				tooltip:AddLine(v.sender .. "'s note: " .. v.note, 0.7, 0.85, 1, true)
+			end
 		end
 	end
 
-	return hasAddon or (matched ~= nil)
+	return hasAddon or matched ~= nil or vouchedBy ~= nil
 end
 
 -- ── Tooltip refresh on async PONG ─────────────────────────────
