@@ -1959,7 +1959,12 @@ function MPT:RefreshMvpsSidePanel()
 				GameTooltip:AddLine(" ")
 			end
 			GameTooltip:AddLine("Left-click to scroll to run", 0.7, 0.7, 0.7)
-			if not isViewing then
+			if isViewing then
+				local alreadyLocal = MPT.db.global.mvps[MPT:NormalizeNameRealm(nameRealm)]
+				if not alreadyLocal then
+					GameTooltip:AddLine("Right-click to add to your list", 0.7, 0.7, 0.7)
+				end
+			else
 				GameTooltip:AddLine("Right-click to edit note", 0.7, 0.7, 0.7)
 			end
 			GameTooltip:Show()
@@ -1973,6 +1978,8 @@ function MPT:RefreshMvpsSidePanel()
 		bubble:SetScript("OnClick", function(self, button)
 			if button == "RightButton" and not isViewing then
 				MPT:ShowNotePopup(nameRealm, self, class)
+			elseif button == "RightButton" and isViewing then
+				MPT:ShowRemoteMvpContextMenu(nameRealm, class, data)
 			else
 				MPT:ScrollToPlayerRun(nameRealm)
 			end
@@ -2220,6 +2227,88 @@ function MPT:ToggleHelpPanel()
 			self.helpLabel:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
 		end
 	end
+end
+
+-- ── Remote MVP context menu (right-click a bubble in remote view) ──
+
+function MPT:ShowRemoteMvpContextMenu(nameRealm, class, data)
+	self:HideAllPopups()
+
+	local normalized = self:NormalizeNameRealm(nameRealm)
+	local alreadyLocal = self.db.global.mvps[normalized]
+
+	local menuHeight = alreadyLocal and 26 or 48
+	local menu = CreateFrame("Frame", nil, self.mainFrame)
+	menu:SetSize(190, menuHeight)
+	menu:SetFrameStrata("TOOLTIP")
+
+	local bg = menu:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+	local function createMenuBtn(yOffset, label, textColor, onClick, disabled)
+		local btn = CreateFrame("Button", nil, menu)
+		btn:SetHeight(22)
+		btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, yOffset)
+		btn:SetPoint("TOPRIGHT", menu, "TOPRIGHT", 0, yOffset)
+		local btnText = btn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		btnText:SetPoint("LEFT", 10, 0)
+		btnText:SetText(label)
+		if disabled then
+			btnText:SetTextColor(0.5, 0.5, 0.5)
+		else
+			btnText:SetTextColor(textColor[1], textColor[2], textColor[3])
+		end
+		local btnBg = btn:CreateTexture(nil, "BACKGROUND")
+		btnBg:SetAllPoints()
+		btnBg:SetColorTexture(0, 0, 0, 0)
+		if not disabled then
+			btn:SetScript("OnEnter", function()
+				btnBg:SetColorTexture(C.highlight[1], C.highlight[2], C.highlight[3], 0.15)
+			end)
+			btn:SetScript("OnLeave", function()
+				btnBg:SetColorTexture(0, 0, 0, 0)
+			end)
+			btn:SetScript("OnClick", function()
+				menu:Hide()
+				onClick()
+			end)
+		end
+		return btn
+	end
+
+	if alreadyLocal then
+		createMenuBtn(-2, "Already in your list", C.textMuted, nil, true)
+	else
+		local remoteNote = data and data.note or nil
+		createMenuBtn(-2, "Add to my MVPs", C.textPrimary, function()
+			self:AddMvp(normalized, UnitName("player"), class, remoteNote)
+			self:BroadcastMvpAdd(normalized)
+			self:OnMvpChanged()
+			self:Print(nameRealm .. " added to your MVP list.")
+		end)
+		createMenuBtn(-24, "Add + Edit Note", C.textPrimary, function()
+			self:AddMvp(normalized, UnitName("player"), class, remoteNote)
+			self:BroadcastMvpAdd(normalized)
+			self:OnMvpChanged()
+			self:ShowNotePopup(normalized, nil, class)
+		end)
+	end
+
+	-- Position at cursor
+	local scale = UIParent:GetEffectiveScale()
+	local x, y = GetCursorPosition()
+	menu:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+	menu:Show()
+
+	self.remoteMvpContextMenu = menu
+
+	-- Close on next click elsewhere
+	menu:SetScript("OnUpdate", function(self)
+		if not self:IsMouseOver() and IsMouseButtonDown("LeftButton") then
+			self:Hide()
+		end
+	end)
 end
 
 -- ── Row context menu ────────────────────────────────────────────

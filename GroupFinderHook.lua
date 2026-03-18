@@ -43,10 +43,12 @@ function MPT:TryHookApplicationViewer()
 			end
 			-- Register for future updates
 			scrollBox:RegisterCallback(ScrollBoxListMixin.Event.OnUpdate, function()
-				local f = scrollBox:GetFrames()
-				if f then
-					MPT:OnApplicantFramesChanged(f)
-				end
+				C_Timer.After(0, function()
+					local f = scrollBox:GetFrames()
+					if f then
+						MPT:OnApplicantFramesChanged(f)
+					end
+				end)
 			end, self)
 		end
 	end)
@@ -233,10 +235,12 @@ function MPT:TryHookSearchPanel()
 				self:OnSearchFramesChanged(frames)
 			end
 			scrollBox:RegisterCallback(ScrollBoxListMixin.Event.OnUpdate, function()
-				local f = scrollBox:GetFrames()
-				if f then
-					MPT:OnSearchFramesChanged(f)
-				end
+				C_Timer.After(0, function()
+					local f = scrollBox:GetFrames()
+					if f then
+						MPT:OnSearchFramesChanged(f)
+					end
+				end)
 			end, "MPT_SearchPanel")
 		end
 	end)

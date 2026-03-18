@@ -36,6 +36,7 @@ function MPT:HideAllPopups()
 		end
 	end
 	if self.rowContextMenu then self.rowContextMenu:Hide() end
+	if self.remoteMvpContextMenu then self.remoteMvpContextMenu:Hide() end
 	if self.moveSubmenu then self.moveSubmenu:Hide() end
 	if self.deleteRunDialog then self.deleteRunDialog:Hide() end
 	if self.tableManagerPanel then
