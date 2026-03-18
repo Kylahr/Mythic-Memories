@@ -1916,6 +1916,14 @@ function MPT:RefreshMvpsSidePanel()
 		end
 		if vouchedBy and bubble.rightBar then
 			bubble.rightBar:Show()
+			-- Green if you have them locally, blue if only party members do
+			local normalized = self:NormalizeNameRealm(nameRealm)
+			local inLocal = self.db.global.mvps and self.db.global.mvps[normalized]
+			if inLocal then
+				bubble.rightBar:SetColorTexture(0.2, 1, 0.2, 1)
+			else
+				bubble.rightBar:SetColorTexture(0.3, 0.7, 1, 1)
+			end
 			bubble.vouchedBy = vouchedBy
 			bubble.vouches = vouches
 		elseif bubble.rightBar then
