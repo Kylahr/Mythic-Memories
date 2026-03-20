@@ -169,6 +169,22 @@ for k, v in pairs(THEMES["coffee"]) do C[k] = v end
 -- Expose palette globally so other files (EditPopup, RowDetail) can access it
 MPT.C = C
 
+-- Fixed note colors (theme-independent) — easy to tweak in one place
+local NOTE_LABEL = { 1, 0.82, 0 }       -- yellow — "Note", "MVP Note" labels
+local NOTE_TEXT  = { 0.7, 0.85, 1 }      -- light blue — actual note content
+local NOTE_LABEL_HEX = "FFD100"          -- hex of NOTE_LABEL for inline color codes
+MPT.NOTE_LABEL = NOTE_LABEL
+MPT.NOTE_TEXT  = NOTE_TEXT
+MPT.NOTE_LABEL_HEX = NOTE_LABEL_HEX
+
+-- Build a note label with name in class color + "Note" in yellow
+-- e.g. "|cFF00FF96Kylahr's|r |cFFFFD100Note:|r"
+function MPT:NoteLabel(name, class)
+	local cr, cg, cb = self:GetClassColor(class)
+	local classHex = string.format("%02X%02X%02X", cr * 255, cg * 255, cb * 255)
+	return "|cFF" .. classHex .. name .. "'s|r |cFF" .. NOTE_LABEL_HEX .. "Note:|r"
+end
+
 function MPT:ApplyTheme(themeKey)
 	local theme = THEMES[themeKey]
 	if not theme then return end
@@ -644,7 +660,6 @@ end
 function MPT:CreateMainFrame()
 	if self.mainFrame then return end
 
-	local PADDING = 8
 	local tableWidth = getTotalWidth()
 	local totalWidth = math.max(tableWidth + 18 + 12, 730)
 	-- 26 (title bar) + 30 (filter bar gap) + HEADER_HEIGHT + rows = exact fit
@@ -778,6 +793,7 @@ function MPT:CreateMainFrame()
 		-- Clear view mode when closing
 		if MPT.viewingPlayer then
 			MPT.viewingPlayer = nil
+			MPT.viewingClass = nil
 			MPT.viewingData = nil
 			MPT.remoteTableList = nil
 			MPT.remoteTableOwner = nil
@@ -802,7 +818,7 @@ function MPT:CreateMainFrame()
 	self:CreateScrollFrame(tableCard, tableWidth)
 
 	-- ── MVP card (elevated panel) ──────────────────────────────
-	self:CreateMvpsSidePanel(frame, PADDING, tableCard)
+	self:CreateMvpsSidePanel(frame)
 
 	frame:Hide()
 	self.mainFrame = frame
@@ -1119,11 +1135,12 @@ function MPT:CreateRow(parent, index)
 	mvpZone:SetScript("OnEnter", function(self)
 		if row.runData and row.mvpNames and #row.mvpNames > 0 then
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-			GameTooltip:AddLine("MVPs", 1, 0.82, 0)
+			GameTooltip:AddLine("MVPs", NOTE_LABEL[1], NOTE_LABEL[2], NOTE_LABEL[3])
 			for _, name in ipairs(row.mvpNames) do
 				local note = MPT:GetMvpNote(name)
 				if note and note ~= "" then
-					GameTooltip:AddLine(name .. " - " .. note, 1, 1, 1, true)
+					GameTooltip:AddLine(name, 1, 1, 1)
+					GameTooltip:AddLine(note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
 				else
 					GameTooltip:AddLine(name, 1, 1, 1)
 				end
@@ -1601,7 +1618,7 @@ end
 local MVP_BUBBLE_HEIGHT = 28
 local MVP_BUBBLE_SPACING = 3
 
-function MPT:CreateMvpsSidePanel(parent, padding, tableCard)
+function MPT:CreateMvpsSidePanel(parent)
 	local panel = CreateFrame("Frame", nil, parent)
 	panel:SetWidth(MVP_PANEL_WIDTH)
 	-- Extends to the LEFT of the main frame
@@ -1905,6 +1922,18 @@ function MPT:RefreshMvpsSidePanel()
 
 		-- Shared MVP right bar (green = you or a party member also has this MVP)
 		local vouches = self:CheckPartyMvp(nameRealm)
+		-- In remote view, filter out the person whose list we're viewing (redundant)
+		if isViewing and self.viewingPlayer then
+			local viewBase = (self.viewingPlayer:match("^([^%-]+)") or self.viewingPlayer):lower()
+			local filtered = {}
+			for _, v in ipairs(vouches) do
+				local senderBase = (v.sender:match("^([^%-]+)") or v.sender):lower()
+				if senderBase ~= viewBase then
+					filtered[#filtered + 1] = v
+				end
+			end
+			vouches = filtered
+		end
 		local vouchedBy = vouches[1] and vouches[1].sender or nil
 		if not vouchedBy and isViewing then
 			local normalized = self:NormalizeNameRealm(nameRealm)
@@ -1938,15 +1967,16 @@ function MPT:RefreshMvpsSidePanel()
 			if isViewing then
 				local remoteNote = data.note
 				if remoteNote and remoteNote ~= "" then
-					GameTooltip:AddLine("Their Note", 0.5, 0.8, 1)
-					GameTooltip:AddLine(remoteNote, 1, 1, 1, true)
+					local ownerName = (MPT.viewingPlayer or ""):match("^([^%-]+)") or "Their"
+					GameTooltip:AddLine(MPT:NoteLabel(ownerName, MPT.viewingClass), 1, 1, 1)
+					GameTooltip:AddLine(remoteNote, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
 					GameTooltip:AddLine(" ")
 				end
 			else
 				local note = MPT:GetMvpNote(nameRealm)
 				if note and note ~= "" then
-					GameTooltip:AddLine("Note", 1, 0.82, 0)
-					GameTooltip:AddLine(note, 1, 1, 1, true)
+					GameTooltip:AddLine("Note", NOTE_LABEL[1], NOTE_LABEL[2], NOTE_LABEL[3])
+					GameTooltip:AddLine(note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
 					GameTooltip:AddLine(" ")
 				end
 			end
@@ -1955,12 +1985,14 @@ function MPT:RefreshMvpsSidePanel()
 					if v.sender == "you" then
 						GameTooltip:AddLine("Also in your list", 0.2, 1, 0.2)
 						if v.note and v.note ~= "" then
-							GameTooltip:AddLine("Your note: " .. v.note, 0.7, 0.85, 1, true)
+							GameTooltip:AddLine("Your note:", NOTE_LABEL[1], NOTE_LABEL[2], NOTE_LABEL[3])
+							GameTooltip:AddLine(v.note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
 						end
 					else
 						GameTooltip:AddLine("Also in " .. v.sender .. "'s list", 0.2, 1, 0.2)
 						if v.note and v.note ~= "" then
-							GameTooltip:AddLine(v.sender .. "'s note: " .. v.note, 0.7, 0.85, 1, true)
+							GameTooltip:AddLine(v.sender .. "'s note:", NOTE_LABEL[1], NOTE_LABEL[2], NOTE_LABEL[3])
+							GameTooltip:AddLine(v.note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
 						end
 					end
 				end
@@ -2906,7 +2938,7 @@ function MPT:ShowMvpJoinNotification(mvpList)
 			noteLine:SetJustifyH("LEFT")
 			noteLine:SetWordWrap(true)
 			noteLine:SetText(mvp.note)
-			noteLine:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+			noteLine:SetTextColor(NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3])
 			noteLine:Show()
 			lineIdx = lineIdx + 1
 			local noteHeight = noteLine:GetStringHeight() or 12
@@ -2998,9 +3030,17 @@ function MPT:CreateOptionsPanel()
 	end
 	panel.notifCheck = notifCheck
 
+	-- Sync Messages checkbox
+	local syncCheck = self:CreateModernCheckbox(panel, "Sync Messages")
+	syncCheck:SetPoint("TOPLEFT", notifCheck, "BOTTOMLEFT", 0, -6)
+	syncCheck._onToggle = function(val)
+		MPT.db.global.syncMessages = val
+	end
+	panel.syncCheck = syncCheck
+
 	-- Notification Sound checkbox
 	local soundCheck = self:CreateModernCheckbox(panel, "Notification Sound")
-	soundCheck:SetPoint("TOPLEFT", notifCheck, "BOTTOMLEFT", 0, -6)
+	soundCheck:SetPoint("TOPLEFT", syncCheck, "BOTTOMLEFT", 0, -6)
 	soundCheck._onToggle = function(val)
 		MPT.db.global.mvpSound = val
 	end
@@ -3095,6 +3135,7 @@ function MPT:ToggleOptionsPanel()
 		self:HideAllPopups()
 		self.optionsPanel.shareCheck:SetChecked(self.db.global.shareTable)
 		self.optionsPanel.notifCheck:SetChecked(self.db.global.mvpNotifications ~= false)
+		self.optionsPanel.syncCheck:SetChecked(self.db.global.syncMessages ~= false)
 		self.optionsPanel.soundCheck:SetChecked(self.db.global.mvpSound ~= false)
 		self.optionsPanel:Show()
 	end
@@ -3738,6 +3779,7 @@ function MPT:UpdateViewModeUI()
 				viewClass = self.db.global.mvps[matched].class
 			end
 		end
+		self.viewingClass = viewClass
 		local r, g, b = self:GetClassColor(viewClass)
 		local hex = string.format("|cFF%02x%02x%02x", r * 255, g * 255, b * 255)
 		local goldHex = string.format("|cFF%02x%02x%02x", C.accent[1] * 255, C.accent[2] * 255, C.accent[3] * 255)
@@ -3811,13 +3853,14 @@ function MPT:UpdateViewModeUI()
 			if inLocal then
 				local note = self:GetMvpNote(inLocal)
 				if note and note ~= "" then
-					table.insert(tooltipLines, { text = note, r = 1, g = 1, b = 1, wrap = true })
+					table.insert(tooltipLines, { text = note, r = NOTE_TEXT[1], g = NOTE_TEXT[2], b = NOTE_TEXT[3], wrap = true })
 				end
 			end
 			-- Party members' notes
 			for _, v in ipairs(vouches) do
 				if v.note and v.note ~= "" then
-					table.insert(tooltipLines, { text = v.sender .. "'s note: " .. v.note, r = 0.7, g = 0.85, b = 1, wrap = true })
+					table.insert(tooltipLines, { text = v.sender .. "'s note:", r = NOTE_LABEL[1], g = NOTE_LABEL[2], b = NOTE_LABEL[3] })
+					table.insert(tooltipLines, { text = v.note, r = NOTE_TEXT[1], g = NOTE_TEXT[2], b = NOTE_TEXT[3], wrap = true })
 				end
 			end
 			crown.tooltipLines = tooltipLines

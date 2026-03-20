@@ -13,6 +13,7 @@ MPT.DB_DEFAULTS = {
 		shareTable = true,
 		mvpNotifications = true,
 		mvpSound = true,
+		syncMessages = true,
 		notificationPos = { point = "TOP", x = 0, y = -200 },
 		scanBtnPos = { point = "CENTER", x = 200, y = -200 },
 		theme = "coffee",

@@ -26,15 +26,15 @@ local function DC()
 end
 
 local STAT_COLUMNS = {
-	{ key = "name",       label = "NAME",       width = 160 },
-	{ key = "role",       label = "",            width = 30 },
-	{ key = "damage",     label = "DAMAGE",     width = 75 },
-	{ key = "dps",        label = "DPS",        width = 55 },
-	{ key = "healing",    label = "HEALING",    width = 75 },
-	{ key = "hps",        label = "HPS",        width = 55 },
-	{ key = "dmgTaken",   label = "DMG TKN",    width = 70 },
-	{ key = "deaths",     label = "DEATHS",     width = 50 },
-	{ key = "interrupts", label = "INTS",       width = 50 },
+	{ label = "NAME",       width = 160 },
+	{ label = "",            width = 30 },
+	{ label = "DAMAGE",     width = 75 },
+	{ label = "DPS",        width = 55 },
+	{ label = "HEALING",    width = 75 },
+	{ label = "HPS",        width = 55 },
+	{ label = "DMG TKN",    width = 70 },
+	{ label = "DEATHS",     width = 50 },
+	{ label = "INTS",       width = 50 },
 }
 
 MPT.STAT_COLUMNS = STAT_COLUMNS -- expose for tests
@@ -339,8 +339,9 @@ function MPT:ExpandRow(row)
 				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 				local remoteNote = MPT:GetViewMvpNote(nameRealm)
 				if remoteNote and remoteNote ~= "" then
-					GameTooltip:AddLine("Their Note", 0.5, 0.8, 1)
-					GameTooltip:AddLine(remoteNote, 1, 1, 1, true)
+					local ownerName = (MPT.viewingPlayer or ""):match("^([^%-]+)") or "Their"
+					GameTooltip:AddLine(MPT:NoteLabel(ownerName, MPT.viewingClass), 1, 1, 1)
+					GameTooltip:AddLine(remoteNote, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 					GameTooltip:AddLine(" ")
 				end
 				if MPT:IsMvp(nameRealm) then
@@ -383,8 +384,8 @@ function MPT:ExpandRow(row)
 				if MPT:IsMvp(nameRealm) then
 					local note = MPT:GetMvpNote(nameRealm)
 					if note and note ~= "" then
-						GameTooltip:AddLine("MVP Note", 1, 0.82, 0)
-						GameTooltip:AddLine(note, 1, 1, 1, true)
+						GameTooltip:AddLine("MVP Note", MPT.NOTE_LABEL[1], MPT.NOTE_LABEL[2], MPT.NOTE_LABEL[3])
+						GameTooltip:AddLine(note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 						GameTooltip:AddLine(" ")
 					end
 					GameTooltip:AddLine("Left-click to remove from MVPs", 1, 0.5, 0.5)

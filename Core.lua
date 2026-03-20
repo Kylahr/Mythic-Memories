@@ -19,11 +19,19 @@ function MPT:OnInitialize()
 		OnClick = function(_, button)
 			if button == "LeftButton" then
 				MPT:ToggleUI()
+			elseif button == "RightButton" then
+				if IsInGroup() then
+					MPT:BroadcastBrowseMvps()
+					MPT:Print("Refreshing party MVP lists...")
+				else
+					MPT:Print("Not in a group.")
+				end
 			end
 		end,
 		OnTooltipShow = function(tt)
 			tt:AddLine("Mythic Memories")
 			tt:AddLine("Click to toggle M+ run history", 1, 1, 1)
+			tt:AddLine("Right-click to refresh party MVP lists", 0.7, 0.7, 0.7)
 		end,
 	})
 	LibStub("LibDBIcon-1.0"):Register(ADDON_NAME, ldb, self.db.global.minimap)
@@ -120,13 +128,17 @@ function MPT:OnGroupRosterUpdate()
 	end
 
 	if hasNew then
-		-- Check new members for MVP status
+		-- Check new members for MVP status and collect new names
 		local mvpJoiners = {}
+		local newNames = {}
+		local myName = UnitName("player")
+		local wasAlreadyInGroup = next(self.partyMvpMembers) ~= nil
+
 		for i = 1, count do
 			local unit = (prefix == "party") and (i < count and ("party" .. i) or "player") or ("raid" .. i)
 			local name, realm = UnitName(unit)
-			local myName = UnitName("player")
 			if name and name ~= myName and not self.partyMvpMembers[name] then
+				newNames[#newNames + 1] = name
 				if not realm or realm == "" then
 					realm = GetRealmName()
 				end
@@ -150,7 +162,18 @@ function MPT:OnGroupRosterUpdate()
 
 		-- Small delay so the new member's addon is ready to receive
 		C_Timer.After(1, function()
-			MPT:BroadcastBrowseMvps()
+			if not wasAlreadyInGroup then
+				-- I just joined a group — broadcast to everyone
+				MPT:BroadcastBrowseMvps()
+			else
+				-- Someone else joined — whisper only to new member(s)
+				-- Stagger whispers to avoid a burst in large groups
+				for i, name in ipairs(newNames) do
+					C_Timer.After((i - 1) * 0.5, function()
+						MPT:WhisperBrowseMvps(name)
+					end)
+				end
+			end
 		end)
 	end
 	self.partyMvpMembers = currentMembers

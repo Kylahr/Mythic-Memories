@@ -103,12 +103,13 @@ function MPT:HookMemberFrame(memberFrame)
 		if nr then
 			local note = MPT:GetMvpNote(nr)
 			if note and note ~= "" then
-				GameTooltip:AddLine(note, 1, 1, 1, true)
+				GameTooltip:AddLine(note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 		end
 		for _, v in ipairs(vouches) do
 			if v.note and v.note ~= "" then
-				GameTooltip:AddLine(v.sender .. "'s note: " .. v.note, 0.7, 0.85, 1, true)
+				GameTooltip:AddLine(v.sender .. "'s note:", MPT.NOTE_LABEL[1], MPT.NOTE_LABEL[2], MPT.NOTE_LABEL[3])
+				GameTooltip:AddLine(v.note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 		end
 		GameTooltip:Show()
@@ -378,11 +379,12 @@ function MPT:UpdateSearchResultCrown(frame)
 				GameTooltip:AddLine("Vouched by " .. table.concat(names, ", "), 0.8, 0.8, 0.8, true)
 			end
 			if info.localNote and info.localNote ~= "" then
-				GameTooltip:AddLine(info.localNote, 1, 1, 1, true)
+				GameTooltip:AddLine(info.localNote, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 			for _, v in ipairs(info.vouches) do
 				if v.note and v.note ~= "" then
-					GameTooltip:AddLine(v.sender .. "'s note: " .. v.note, 0.7, 0.85, 1, true)
+					GameTooltip:AddLine(v.sender .. "'s note:", MPT.NOTE_LABEL[1], MPT.NOTE_LABEL[2], MPT.NOTE_LABEL[3])
+					GameTooltip:AddLine(v.note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 				end
 			end
 			GameTooltip:Show()
@@ -424,11 +426,12 @@ function MPT:UpdateSearchResultCrown(frame)
 		tooltipLines[#tooltipLines + 1] = { text = "MVP — vouched by " .. table.concat(names, ", "), r = 0.3, g = 0.7, b = 1, wrap = true }
 	end
 	if localNote and localNote ~= "" then
-		tooltipLines[#tooltipLines + 1] = { text = localNote, r = 1, g = 1, b = 1, wrap = true }
+		tooltipLines[#tooltipLines + 1] = { text = localNote, r = MPT.NOTE_TEXT[1], g = MPT.NOTE_TEXT[2], b = MPT.NOTE_TEXT[3], wrap = true }
 	end
 	for _, v in ipairs(vouches) do
 		if v.note and v.note ~= "" then
-			tooltipLines[#tooltipLines + 1] = { text = v.sender .. "'s note: " .. v.note, r = 0.7, g = 0.85, b = 1, wrap = true }
+			tooltipLines[#tooltipLines + 1] = { text = v.sender .. "'s note:", r = MPT.NOTE_LABEL[1], g = MPT.NOTE_LABEL[2], b = MPT.NOTE_LABEL[3] }
+			tooltipLines[#tooltipLines + 1] = { text = v.note, r = MPT.NOTE_TEXT[1], g = MPT.NOTE_TEXT[2], b = MPT.NOTE_TEXT[3], wrap = true }
 		end
 	end
 

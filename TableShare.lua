@@ -365,6 +365,7 @@ end
 
 function MPT:ExitViewMode()
 	self.viewingPlayer = nil
+	self.viewingClass = nil
 	self.viewingData = nil
 	self.remoteTableList = nil
 	self.remoteTableOwner = nil
@@ -432,16 +433,6 @@ function MPT:OnTableListResponse(sender, data)
 	end
 end
 
--- ── Remote table loading indicator ────────────────────────────
-
-function MPT:ShowRemoteTableLoading()
-	-- Implemented in MainFrame.lua (UI layer)
-end
-
-function MPT:HideRemoteTableLoading()
-	-- Implemented in MainFrame.lua (UI layer)
-end
-
 function MPT:IsViewingRemote()
 	return self.viewingPlayer ~= nil
 end
@@ -463,6 +454,18 @@ function MPT:BroadcastBrowseMvps()
 	self:SendCommMessage(COMM_PREFIX, msg, "PARTY")
 end
 
+function MPT:WhisperBrowseMvps(targetName)
+	if not targetName then return end
+
+	local mvps = {}
+	for nameRealm, data in pairs(self.db.global.mvps or {}) do
+		mvps[nameRealm] = data.note or ""
+	end
+
+	local msg = self:Serialize("BROWSE_MVPS", { mvps = mvps })
+	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", targetName)
+end
+
 function MPT:OnBrowseMvpsReceived(sender, data)
 	if not data then return end
 
@@ -476,6 +479,22 @@ function MPT:OnBrowseMvpsReceived(sender, data)
 		end
 		self.partyMvpCache[sender] = lookup
 	end
+
+	-- Debounce: print summary once no more lists arrive for 2 seconds
+	if self._browseMvpTimer then
+		self._browseMvpTimer:Cancel()
+	end
+	self._browseMvpTimer = C_Timer.NewTimer(2, function()
+		MPT._browseMvpTimer = nil
+		if MPT.db and MPT.db.global.syncMessages == false then return end
+		local names = {}
+		for name in pairs(MPT.partyMvpCache) do
+			names[#names + 1] = name:match("^([^%-]+)") or name
+		end
+		if #names > 0 then
+			MPT:Print("|cFF808080Synced MVP lists:|r " .. table.concat(names, ", "))
+		end
+	end)
 end
 
 function MPT:PurgePartyMvpCache()

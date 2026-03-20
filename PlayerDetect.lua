@@ -113,12 +113,13 @@ local function AddMMTooltipLines(tooltip, nameKey)
 		if matched then
 			local note = MPT:GetMvpNote(matched)
 			if note and note ~= "" then
-				tooltip:AddLine(note, 0.9, 0.9, 0.9, true)
+				tooltip:AddLine(note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 		end
 		for _, v in ipairs(vouches) do
 			if v.note and v.note ~= "" then
-				tooltip:AddLine(v.sender .. "'s note: " .. v.note, 0.7, 0.85, 1, true)
+				tooltip:AddLine(v.sender .. "'s note:", MPT.NOTE_LABEL[1], MPT.NOTE_LABEL[2], MPT.NOTE_LABEL[3])
+				tooltip:AddLine(v.note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 		end
 	end
