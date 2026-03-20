@@ -55,7 +55,8 @@ function MPT:AbbreviateNumber(n)
 	elseif n >= 1000 then
 		return string.format("%.1fK", n / 1000)
 	end
-	return tostring(n)
+	if n == math.floor(n) then return tostring(n) end
+	return string.format("%.1f", n)
 end
 
 function MPT:OnMvpChanged()
@@ -87,22 +88,21 @@ function MPT:ToggleRowExpansion(row)
 			end
 		end
 	else
-		-- Expanding: save scroll position, expand, restore, then show detail
+		-- Expanding: save scroll position, expand, restore, then refresh once
 		local savedVal = scrollBar and scrollBar:GetValue() or 0
 		self.expandedRunId = row.runData.id
 		self:HideAllPopups()
-		self:RefreshTable()
-		-- Restore scroll position so the view doesn't jump
 		if scrollBar then
 			scrollBar:SetValue(savedVal)
-			self:RefreshTable()
 		end
+		self:RefreshTable()
 	end
 end
 
 function MPT:ExpandRow(row)
 	local run = row.runData
 	if not run then return end
+	local dc = DC()
 
 	local members = run.members or {}
 	local numMembers = #members
@@ -130,7 +130,7 @@ function MPT:ExpandRow(row)
 		bg:SetAllPoints()
 		detail.bg = bg
 	end
-	bg:SetColorTexture(DC().bg[1], DC().bg[2], DC().bg[3], 1)
+	bg:SetColorTexture(dc.bg[1], dc.bg[2], dc.bg[3], 1)
 
 	-- Top accent line (gold, marks start of detail)
 	local topLine = detail.topLine
@@ -142,7 +142,7 @@ function MPT:ExpandRow(row)
 	topLine:SetHeight(2)
 	topLine:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, 0)
 	topLine:SetPoint("TOPRIGHT", detail, "TOPRIGHT", 0, 0)
-	topLine:SetColorTexture(DC().accentDim[1], DC().accentDim[2], DC().accentDim[3], 0.5)
+	topLine:SetColorTexture(dc.accentDim[1], dc.accentDim[2], dc.accentDim[3], 0.5)
 	topLine:Show()
 
 	-- Clear previous cell text
@@ -192,7 +192,7 @@ function MPT:ExpandRow(row)
 	headerBg:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PADDING, -DETAIL_PADDING)
 	headerBg:SetPoint("RIGHT", detail, "RIGHT", -DETAIL_PADDING, 0)
 	headerBg:SetHeight(DETAIL_HEADER_HEIGHT)
-	headerBg:SetColorTexture(DC().headerBg[1], DC().headerBg[2], DC().headerBg[3], 1)
+	headerBg:SetColorTexture(dc.headerBg[1], dc.headerBg[2], dc.headerBg[3], 1)
 	headerBg:Show()
 
 	local cellIdx = 0
@@ -209,7 +209,7 @@ function MPT:ExpandRow(row)
 		cell:SetWidth(col.width)
 		cell:SetJustifyH("LEFT")
 		cell:SetText(col.label)
-		cell:SetTextColor(DC().accent[1], DC().accent[2], DC().accent[3])
+		cell:SetTextColor(dc.accent[1], dc.accent[2], dc.accent[3])
 		cell:Show()
 		xOff = xOff + col.width
 	end
@@ -224,7 +224,7 @@ function MPT:ExpandRow(row)
 	headerLine:SetHeight(1)
 	headerLine:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PADDING, -(DETAIL_PADDING + DETAIL_HEADER_HEIGHT))
 	headerLine:SetPoint("RIGHT", detail, "RIGHT", -DETAIL_PADDING, 0)
-	headerLine:SetColorTexture(DC().accentDim[1], DC().accentDim[2], DC().accentDim[3], 0.4)
+	headerLine:SetColorTexture(dc.accentDim[1], dc.accentDim[2], dc.accentDim[3], 0.4)
 	headerLine:Show()
 
 	-- ── Member rows ─────────────────────────────────────────────
@@ -243,7 +243,7 @@ function MPT:ExpandRow(row)
 			rowBg = detail:CreateTexture(nil, "BACKGROUND", nil, 1)
 			detail.rowBgs[mIdx] = rowBg
 		end
-		local cardColor = (mIdx % 2 == 1) and DC().cardOdd or DC().cardEven
+		local cardColor = (mIdx % 2 == 1) and dc.cardOdd or dc.cardEven
 		rowBg:ClearAllPoints()
 		rowBg:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PADDING, -topY)
 		rowBg:SetPoint("RIGHT", detail, "RIGHT", -DETAIL_PADDING, 0)
@@ -447,7 +447,7 @@ function MPT:ExpandRow(row)
 			cell:SetWidth(STAT_COLUMNS[vIdx + 2].width)
 			cell:SetJustifyH("LEFT")
 			cell:SetText(val)
-			cell:SetTextColor(DC().text[1], DC().text[2], DC().text[3])
+			cell:SetTextColor(dc.text[1], dc.text[2], dc.text[3])
 			cell:Show()
 
 			xOff = xOff + STAT_COLUMNS[vIdx + 2].width
@@ -464,7 +464,7 @@ function MPT:ExpandRow(row)
 	actionZoneBg:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", DETAIL_PADDING, DETAIL_PADDING - 2)
 	actionZoneBg:SetPoint("RIGHT", detail, "RIGHT", -DETAIL_PADDING, 0)
 	actionZoneBg:SetHeight(ACTION_BAR_HEIGHT + 4)
-	actionZoneBg:SetColorTexture(DC().actionBg[1], DC().actionBg[2], DC().actionBg[3], 1)
+	actionZoneBg:SetColorTexture(dc.actionBg[1], dc.actionBg[2], dc.actionBg[3], 1)
 	actionZoneBg:Show()
 
 	-- Divider line above action bar
@@ -477,7 +477,7 @@ function MPT:ExpandRow(row)
 	actionDiv:SetHeight(1)
 	actionDiv:SetPoint("BOTTOMLEFT", actionZoneBg, "TOPLEFT", 0, 0)
 	actionDiv:SetPoint("RIGHT", actionZoneBg, "TOPRIGHT", 0, 0)
-	actionDiv:SetColorTexture(DC().divider[1], DC().divider[2], DC().divider[3], 1)
+	actionDiv:SetColorTexture(dc.divider[1], dc.divider[2], dc.divider[3], 1)
 	actionDiv:Show()
 
 	-- ── Action bar ──────────────────────────────────────────────
@@ -503,7 +503,7 @@ function MPT:ExpandRow(row)
 	end
 
 	detail.actionBar.deathText:SetText("Deaths: " .. (run.totalDeaths or 0))
-	detail.actionBar.deathText:SetTextColor(DC().textMuted[1], DC().textMuted[2], DC().textMuted[3])
+	detail.actionBar.deathText:SetTextColor(dc.textMuted[1], dc.textMuted[2], dc.textMuted[3])
 
 	if self:IsViewingRemote() then
 		if run.link and run.link ~= "" then

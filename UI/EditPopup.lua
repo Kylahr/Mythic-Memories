@@ -515,7 +515,7 @@ end
 function MPT:ClassColoredName(nameRealm, class)
 	if class then
 		local r, g, b = self:GetClassColor(class)
-		local hex = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+		local hex = string.format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
 		return "|cFF" .. hex .. nameRealm .. "|r"
 	end
 	return nameRealm

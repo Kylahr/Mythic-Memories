@@ -22,7 +22,8 @@ end
 
 function MPT:OnCommReceived(prefix, message, distribution, sender)
 	local myName = UnitName("player")
-	if sender == myName then return end
+	local myRealm = GetRealmName()
+	if sender == myName or sender == myName .. "-" .. myRealm then return end
 
 	local ok, msgType, data = self:Deserialize(message)
 	if not ok then return end
@@ -224,16 +225,16 @@ function MPT:OnTableRequest(sender, data)
 
 	-- MVPs: nameRealm -> { class, note }
 	local mvps = {}
-	for nameRealm, data in pairs(self.db.global.mvps or {}) do
+	for nameRealm, mvpData in pairs(self.db.global.mvps or {}) do
 		mvps[nameRealm] = {
-			c = data.class or nil,
-			n = data.note or nil,
+			c = mvpData.class or nil,
+			n = mvpData.note or nil,
 		}
 	end
 
-	local data = { r = packed, v = mvps }
+	local payload = { r = packed, v = mvps }
 
-	local serialized = self:Serialize("TABLE_RESP", data)
+	local serialized = self:Serialize("TABLE_RESP", payload)
 
 	-- Compress with LibDeflate if available
 	if LibDeflate then
@@ -442,28 +443,22 @@ end
 -- Transient cache: { ["Sender-Realm"] = { ["MvpName-Realm"] = true, ... } }
 MPT.partyMvpCache = {}
 
-function MPT:BroadcastBrowseMvps()
-	if not IsInGroup() then return end
-
+function MPT:BuildBrowseMvpsPayload()
 	local mvps = {}
 	for nameRealm, data in pairs(self.db.global.mvps or {}) do
 		mvps[nameRealm] = data.note or ""
 	end
+	return self:Serialize("BROWSE_MVPS", { mvps = mvps })
+end
 
-	local msg = self:Serialize("BROWSE_MVPS", { mvps = mvps })
-	self:SendCommMessage(COMM_PREFIX, msg, "PARTY")
+function MPT:BroadcastBrowseMvps()
+	if not IsInGroup() then return end
+	self:SendCommMessage(COMM_PREFIX, self:BuildBrowseMvpsPayload(), "PARTY")
 end
 
 function MPT:WhisperBrowseMvps(targetName)
 	if not targetName then return end
-
-	local mvps = {}
-	for nameRealm, data in pairs(self.db.global.mvps or {}) do
-		mvps[nameRealm] = data.note or ""
-	end
-
-	local msg = self:Serialize("BROWSE_MVPS", { mvps = mvps })
-	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", targetName)
+	self:SendCommMessage(COMM_PREFIX, self:BuildBrowseMvpsPayload(), "WHISPER", targetName)
 end
 
 function MPT:OnBrowseMvpsReceived(sender, data)

@@ -181,7 +181,7 @@ MPT.NOTE_LABEL_HEX = NOTE_LABEL_HEX
 -- e.g. "|cFF00FF96Kylahr's|r |cFFFFD100Note:|r"
 function MPT:NoteLabel(name, class)
 	local cr, cg, cb = self:GetClassColor(class)
-	local classHex = string.format("%02X%02X%02X", cr * 255, cg * 255, cb * 255)
+	local classHex = string.format("%02X%02X%02X", math.floor(cr * 255), math.floor(cg * 255), math.floor(cb * 255))
 	return "|cFF" .. classHex .. name .. "'s|r |cFF" .. NOTE_LABEL_HEX .. "Note:|r"
 end
 
@@ -790,6 +790,7 @@ function MPT:CreateMainFrame()
 		-- Reset filters on close
 		MPT:ResetFilterPopup()
 		MPT.advancedFilters = nil
+		MPT.currentFilters = nil
 		-- Clear view mode when closing
 		if MPT.viewingPlayer then
 			MPT.viewingPlayer = nil
@@ -1859,7 +1860,6 @@ function MPT:RefreshMvpsSidePanel()
 		end
 	end
 
-	panel.mvpScrollOffset = 0
 	panel.mvpVisibleCount = 0
 
 	-- Filter by search text
@@ -1867,6 +1867,15 @@ function MPT:RefreshMvpsSidePanel()
 	if self.mvpSearchBox then
 		searchText = (self.mvpSearchBox:GetText() or ""):lower()
 	end
+
+	-- Reset scroll only when search text or view mode changed
+	local prevSearch = panel.lastMvpSearchText or ""
+	local prevViewing = panel.lastMvpViewMode or false
+	if searchText ~= prevSearch or isViewing ~= prevViewing then
+		panel.mvpScrollOffset = 0
+	end
+	panel.lastMvpSearchText = searchText
+	panel.lastMvpViewMode = isViewing
 
 	local yOff = 0
 	local idx = 0
@@ -2361,7 +2370,7 @@ function MPT:ShowRowContextMenu(row)
 	local runId = row.runData.id
 	-- Calculate menu height: 2 base items + optional Move to Table
 	local tables = self:GetTableList()
-	local showMoveItem = not self:IsViewingRemote() and #tables > 1
+	local showMoveItem = #tables > 1
 	local menuHeight = showMoveItem and 70 or 48
 
 	local menu = CreateFrame("Frame", nil, self.mainFrame)
@@ -2772,13 +2781,13 @@ function MPT:ApplyFilterPopup()
 		hasLink = p.hasLinkCheck:GetChecked(),
 	}
 
-	-- Sync player/realm from popup to filter bar
+	-- Sync player/realm from popup to filter bar (including clears)
 	local popupPlayer = p.playerBox:GetText()
 	local popupRealm = p.realmBox:GetText()
-	if popupPlayer ~= "" and self.filterPlayerBox then
+	if self.filterPlayerBox then
 		self.filterPlayerBox:SetText(popupPlayer)
 	end
-	if popupRealm ~= "" and self.filterRealmBox then
+	if self.filterRealmBox then
 		self.filterRealmBox:SetText(popupRealm)
 	end
 
@@ -3536,6 +3545,7 @@ function MPT:StartInlineRename(tableIndex)
 	editBg:SetColorTexture(C.inputBg[1], C.inputBg[2], C.inputBg[3], 1)
 
 	local function finishRename()
+		edit:SetScript("OnEditFocusLost", nil)
 		local newName = edit:GetText()
 		if newName and newName:trim() ~= "" then
 			MPT:RenameTable(tableIndex, newName:trim())
@@ -3781,8 +3791,8 @@ function MPT:UpdateViewModeUI()
 		end
 		self.viewingClass = viewClass
 		local r, g, b = self:GetClassColor(viewClass)
-		local hex = string.format("|cFF%02x%02x%02x", r * 255, g * 255, b * 255)
-		local goldHex = string.format("|cFF%02x%02x%02x", C.accent[1] * 255, C.accent[2] * 255, C.accent[3] * 255)
+		local hex = string.format("|cFF%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
+		local goldHex = string.format("|cFF%02x%02x%02x", math.floor(C.accent[1] * 255), math.floor(C.accent[2] * 255), math.floor(C.accent[3] * 255))
 		-- Create a view title overlay frame (renders above MVP panel)
 		if not self.viewTitleFrame then
 			local vtf = CreateFrame("Frame", nil, self.mainFrame)

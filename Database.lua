@@ -1,5 +1,7 @@
 local _, MPT = ...
 
+local MAX_NOTE_LENGTH = 250
+
 MPT.DB_DEFAULTS = {
 	global = {
 		minimap = { hide = false },
@@ -433,9 +435,10 @@ function MPT:CollectFilterValues()
 end
 
 function MPT:DeleteRun(id)
-	for i, run in ipairs(self:GetViewedRuns()) do
+	local runs = self:GetViewedRuns()
+	for i, run in ipairs(runs) do
 		if run.id == id then
-			table.remove(self:GetViewedRuns(), i)
+			table.remove(runs, i)
 			if self.db.global.favourites then
 				self.db.global.favourites[id] = nil
 			end
@@ -484,8 +487,8 @@ function MPT:AddMvp(nameRealm, addedBy, class, note)
 	nameRealm = self:NormalizeNameRealm(nameRealm)
 	if not self.db.global.mvps[nameRealm] then
 		local truncNote = note
-		if truncNote and #truncNote > 250 then
-			truncNote = truncNote:sub(1, 250)
+		if truncNote and #truncNote > MAX_NOTE_LENGTH then
+			truncNote = truncNote:sub(1, MAX_NOTE_LENGTH)
 		end
 		self.db.global.mvps[nameRealm] = {
 			addedDate = time(),
@@ -519,8 +522,8 @@ end
 function MPT:SetMvpNote(nameRealm, note)
 	nameRealm = self:NormalizeNameRealm(nameRealm)
 	if not self.db.global.mvps[nameRealm] then return false end
-	if note and #note > 250 then
-		note = note:sub(1, 250)
+	if note and #note > MAX_NOTE_LENGTH then
+		note = note:sub(1, MAX_NOTE_LENGTH)
 	end
 	self.db.global.mvps[nameRealm].note = note
 	return true
@@ -549,9 +552,6 @@ function MPT:IsViewMvp(nameRealm)
 end
 
 function MPT:ToggleFavourite(runId)
-	if not self.db.global.favourites then
-		self.db.global.favourites = {}
-	end
 	if self.db.global.favourites[runId] then
 		self.db.global.favourites[runId] = nil
 		return false
@@ -609,8 +609,9 @@ end
 function MPT:ResetData(resetRuns, resetMvps)
 	local parts = {}
 	if resetRuns then
-		local removedCount = #self:GetViewedTable().runs
-		self:GetViewedTable().runs = {}
+		local tbl = self:GetViewedTable()
+		local removedCount = #tbl.runs
+		tbl.runs = {}
 		self.db.global.totalRuns = math.max(0, (self.db.global.totalRuns or 0) - removedCount)
 		parts[#parts + 1] = "runs"
 	end

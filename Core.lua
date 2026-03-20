@@ -138,10 +138,11 @@ function MPT:OnGroupRosterUpdate()
 			local unit = (prefix == "party") and (i < count and ("party" .. i) or "player") or ("raid" .. i)
 			local name, realm = UnitName(unit)
 			if name and name ~= myName and not self.partyMvpMembers[name] then
-				newNames[#newNames + 1] = name
 				if not realm or realm == "" then
 					realm = GetRealmName()
 				end
+				local whisperTarget = (realm ~= GetRealmName()) and (name .. "-" .. realm) or name
+				newNames[#newNames + 1] = whisperTarget
 				local nameRealm = name .. "-" .. realm
 				local _, class = UnitClass(unit)
 				local matched = self:MatchMvpName(nameRealm) or self:MatchMvpName(name)

@@ -11,7 +11,7 @@ function MPT:DataTracker_Enable()
 end
 
 function MPT:SnapshotParty()
-	local members = {}
+	local tanks, healers, dps = {}, {}, {}
 	for _, unit in ipairs(PARTY_UNITS) do
 		if UnitExists(unit) then
 			local name, realm = UnitName(unit)
@@ -21,15 +21,22 @@ function MPT:SnapshotParty()
 			if not realm or realm == "" then
 				realm = GetRealmName()
 			end
-			table.insert(members, {
+			local member = {
 				name = name,
 				realm = realm,
 				class = classFilename,
 				role = role or "DAMAGER",
 				guid = guid,
-			})
+			}
+			if role == "TANK" then tanks[#tanks + 1] = member
+			elseif role == "HEALER" then healers[#healers + 1] = member
+			else dps[#dps + 1] = member end
 		end
 	end
+	local members = {}
+	for _, m in ipairs(tanks) do members[#members + 1] = m end
+	for _, m in ipairs(healers) do members[#members + 1] = m end
+	for _, m in ipairs(dps) do members[#members + 1] = m end
 	return members
 end
 
@@ -93,6 +100,14 @@ function MPT:OnZoneChanged()
 	end
 end
 
+function MPT:CountDeaths(dmStats)
+	local total = 0
+	for _, dm in pairs(dmStats) do
+		total = total + (dm.deaths or 0)
+	end
+	return total
+end
+
 function MPT:CollectDamageMeterStats()
 	local stats = {}
 	if not C_DamageMeter or not C_DamageMeter.GetCombatSessionFromType then
@@ -123,8 +138,8 @@ function MPT:CollectDamageMeterStats()
 		local ok, session = pcall(C_DamageMeter.GetCombatSessionFromType, 0, st.type)
 		if ok and session and session.combatSources then
 			for _, source in ipairs(session.combatSources) do
-				local sourceOk, guid = pcall(function() return source.sourceGUID end)
-				if sourceOk and guid and guid ~= "" then
+				local guid = source.sourceGUID
+				if guid and guid ~= "" then
 					-- Redirect pet GUID to owner, skip non-player/non-pet GUIDs
 					local resolvedGUID = petOwnerMap[guid] or guid
 					if not resolvedGUID:match("^Player%-") then
@@ -135,10 +150,10 @@ function MPT:CollectDamageMeterStats()
 						if not stats[resolvedGUID] then
 							stats[resolvedGUID] = { damage = 0, dps = 0, healing = 0, hps = 0, damageTaken = 0, deaths = 0, interrupts = 0 }
 						end
-						local amt = (pcall(function() return source.totalAmount end)) and source.totalAmount or 0
+						local amt = source.totalAmount or 0
 						-- For merged pet stats, add to existing values
 						stats[resolvedGUID][st.field] = (stats[resolvedGUID][st.field] or 0) + amt
-						local aps = (pcall(function() return source.amountPerSecond end)) and source.amountPerSecond or 0
+						local aps = source.amountPerSecond or 0
 						if st.dpsField then
 							stats[resolvedGUID][st.dpsField] = (stats[resolvedGUID][st.dpsField] or 0) + aps
 						end
@@ -146,7 +161,7 @@ function MPT:CollectDamageMeterStats()
 							stats[resolvedGUID][st.hpsField] = (stats[resolvedGUID][st.hpsField] or 0) + aps
 						end
 						if st.field == "deaths" then
-							local dts = (pcall(function() return source.deathTimeSeconds end)) and source.deathTimeSeconds or 0
+							local dts = source.deathTimeSeconds or 0
 							if dts and dts > 0 then
 								stats[resolvedGUID].deaths = (stats[resolvedGUID].deaths or 0) + 1
 							end
@@ -249,7 +264,7 @@ function MPT:SaveFailedRun()
 		description = "",
 		mvps = {},
 		playerStats = self:BuildPlayerStats(self.activeRun.members, dmStats),
-		totalDeaths = 0,
+		totalDeaths = self:CountDeaths(dmStats),
 	}
 
 	self:AddRun(runData)
@@ -325,11 +340,7 @@ function MPT:EndDevRun()
 	local dmStats = self:CollectDamageMeterStats()
 	local members = self.activeRun.members
 
-	-- Count deaths from damage meter stats
-	local totalDeaths = 0
-	for _, dm in pairs(dmStats) do
-		totalDeaths = totalDeaths + (dm.deaths or 0)
-	end
+	local totalDeaths = self:CountDeaths(dmStats)
 
 	local runData = {
 		date = self:FormatDate(),

@@ -47,7 +47,8 @@ end
 
 function MPT:PlayerDetect_SendPing(name, realm)
 	local myName = UnitName("player")
-	if name == myName then return end
+	local myRealm = GetRealmName()
+	if name == myName or (name .. "-" .. (realm or myRealm)) == (myName .. "-" .. myRealm) then return end
 
 	local nameKey = MakeNameKey(name, realm)
 	local entry = GetCacheEntry(nameKey)
@@ -88,10 +89,6 @@ local function AddMMTooltipLines(tooltip, nameKey)
 
 	-- MVP info — show for any MVP regardless of addon detection
 	local matched = MPT:MatchMvpName(nameKey)
-	if not matched then
-		local nameOnly = nameKey:match("^([^%-]+)")
-		if nameOnly then matched = MPT:MatchMvpName(nameOnly) end
-	end
 	local vouches = MPT:CheckPartyMvp(nameKey)
 	local vouchedBy = vouches[1] and vouches[1].sender or nil
 

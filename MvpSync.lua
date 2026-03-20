@@ -25,7 +25,7 @@ function MPT:JoinSyncChannel()
 end
 
 function MPT:GetSyncChannelIndex()
-	if self.syncChannelIndex then
+	if self.syncChannelIndex and self.syncChannelIndex > 0 then
 		return self.syncChannelIndex
 	end
 	local id = GetChannelName(CHANNEL_NAME)
