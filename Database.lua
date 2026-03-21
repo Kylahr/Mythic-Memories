@@ -466,6 +466,10 @@ function MPT:NormalizeNameRealm(nameRealm)
 	return nameRealm
 end
 
+function MPT:StripRealm(nameRealm)
+	return nameRealm:match("^([^%-]+)") or nameRealm
+end
+
 function MPT:MigrateMvpKeys()
 	local mvps = self.db.global.mvps
 	local toRename = {}

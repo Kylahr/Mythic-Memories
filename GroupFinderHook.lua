@@ -90,26 +90,25 @@ function MPT:HookMemberFrame(memberFrame)
 		if nr and vouchedBy then
 			GameTooltip:AddLine("MVP", 0.2, 1, 0.2)
 			local names = {}
-			for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+			for _, v in ipairs(vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 			GameTooltip:AddLine("In your list and " .. table.concat(names, ", ") .. "'s list", 0.8, 0.8, 0.8, true)
 		elseif nr then
 			GameTooltip:AddLine("MVP", 1, 0.85, 0)
 		else
 			GameTooltip:AddLine("MVP", 0.3, 0.7, 1)
 			local names = {}
-			for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+			for _, v in ipairs(vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 			GameTooltip:AddLine("Vouched by " .. table.concat(names, ", "), 0.8, 0.8, 0.8, true)
 		end
 		if nr then
 			local note = MPT:GetMvpNote(nr)
 			if note and note ~= "" then
-				GameTooltip:AddLine(note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
+				GameTooltip:AddLine("|cFF" .. MPT.NOTE_LABEL_HEX .. "Note:|r " .. note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 		end
 		for _, v in ipairs(vouches) do
 			if v.note and v.note ~= "" then
-				GameTooltip:AddLine(v.sender .. "'s note:", MPT.NOTE_LABEL[1], MPT.NOTE_LABEL[2], MPT.NOTE_LABEL[3])
-				GameTooltip:AddLine(v.note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
+				GameTooltip:AddLine("|cFF" .. MPT.NOTE_LABEL_HEX .. MPT:StripRealm(v.sender) .. "'s note:|r " .. v.note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 		end
 		GameTooltip:Show()
@@ -364,27 +363,26 @@ function MPT:UpdateSearchResultCrown(frame)
 			local info = self.mptLeaderMvpInfo
 			GameTooltip:AddLine(" ")
 			-- Leader name in class color
-			GameTooltip:AddLine(info.leaderName, info.classR, info.classG, info.classB)
+			GameTooltip:AddLine(MPT:StripRealm(info.leaderName), info.classR, info.classG, info.classB)
 			if info.inLocal and info.vouchedBy then
 				GameTooltip:AddLine("MVP", 0.2, 1, 0.2)
 				local names = {}
-				for _, v in ipairs(info.vouches) do names[#names + 1] = v.sender end
+				for _, v in ipairs(info.vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 				GameTooltip:AddLine("In your list and " .. table.concat(names, ", ") .. "'s list", 0.8, 0.8, 0.8, true)
 			elseif info.inLocal then
 				GameTooltip:AddLine("MVP", 1, 0.85, 0)
 			else
 				GameTooltip:AddLine("MVP", 0.3, 0.7, 1)
 				local names = {}
-				for _, v in ipairs(info.vouches) do names[#names + 1] = v.sender end
+				for _, v in ipairs(info.vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 				GameTooltip:AddLine("Vouched by " .. table.concat(names, ", "), 0.8, 0.8, 0.8, true)
 			end
 			if info.localNote and info.localNote ~= "" then
-				GameTooltip:AddLine(info.localNote, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
+				GameTooltip:AddLine("|cFF" .. MPT.NOTE_LABEL_HEX .. "Note:|r " .. info.localNote, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 			for _, v in ipairs(info.vouches) do
 				if v.note and v.note ~= "" then
-					GameTooltip:AddLine(v.sender .. "'s note:", MPT.NOTE_LABEL[1], MPT.NOTE_LABEL[2], MPT.NOTE_LABEL[3])
-					GameTooltip:AddLine(v.note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
+					GameTooltip:AddLine("|cFF" .. MPT.NOTE_LABEL_HEX .. MPT:StripRealm(v.sender) .. "'s note:|r " .. v.note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 				end
 			end
 			GameTooltip:Show()
@@ -412,7 +410,7 @@ function MPT:UpdateSearchResultCrown(frame)
 		crown.icon:SetDesaturated(true)
 		crown.icon:SetVertexColor(0.2, 1, 0.2)
 		local names = {}
-		for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+		for _, v in ipairs(vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 		tooltipLines[#tooltipLines + 1] = { text = "MVP — in your list and " .. table.concat(names, ", ") .. "'s list", r = 0.2, g = 1, b = 0.2, wrap = true }
 	elseif inLocal then
 		crown.icon:SetDesaturated(false)
@@ -422,16 +420,15 @@ function MPT:UpdateSearchResultCrown(frame)
 		crown.icon:SetDesaturated(true)
 		crown.icon:SetVertexColor(0.3, 0.7, 1)
 		local names = {}
-		for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+		for _, v in ipairs(vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 		tooltipLines[#tooltipLines + 1] = { text = "MVP — vouched by " .. table.concat(names, ", "), r = 0.3, g = 0.7, b = 1, wrap = true }
 	end
 	if localNote and localNote ~= "" then
-		tooltipLines[#tooltipLines + 1] = { text = localNote, r = MPT.NOTE_TEXT[1], g = MPT.NOTE_TEXT[2], b = MPT.NOTE_TEXT[3], wrap = true }
+		tooltipLines[#tooltipLines + 1] = { text = "|cFF" .. MPT.NOTE_LABEL_HEX .. "Note:|r " .. localNote, r = MPT.NOTE_TEXT[1], g = MPT.NOTE_TEXT[2], b = MPT.NOTE_TEXT[3], wrap = true }
 	end
 	for _, v in ipairs(vouches) do
 		if v.note and v.note ~= "" then
-			tooltipLines[#tooltipLines + 1] = { text = v.sender .. "'s note:", r = MPT.NOTE_LABEL[1], g = MPT.NOTE_LABEL[2], b = MPT.NOTE_LABEL[3] }
-			tooltipLines[#tooltipLines + 1] = { text = v.note, r = MPT.NOTE_TEXT[1], g = MPT.NOTE_TEXT[2], b = MPT.NOTE_TEXT[3], wrap = true }
+			tooltipLines[#tooltipLines + 1] = { text = "|cFF" .. MPT.NOTE_LABEL_HEX .. MPT:StripRealm(v.sender) .. "'s note:|r " .. v.note, r = MPT.NOTE_TEXT[1], g = MPT.NOTE_TEXT[2], b = MPT.NOTE_TEXT[3], wrap = true }
 		end
 	end
 

@@ -86,7 +86,7 @@ function MPT:OnEnable()
 	end
 	self:TableShare_Enable()
 	self:DataTracker_Enable()
-	self:MvpSync_Enable()
+
 	self:GroupFinderHook_Enable()
 	self:HookUnitMenus()
 	self:PartyMvpBrowse_Enable()

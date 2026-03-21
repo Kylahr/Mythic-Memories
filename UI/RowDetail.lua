@@ -66,6 +66,15 @@ function MPT:OnMvpChanged()
 	if self.mvpsSidePanel and self.mvpsSidePanel:IsShown() then
 		self:RefreshMvpsSidePanel()
 	end
+	if IsInGroup() then
+		if self.mvpBroadcastTimer then
+			self.mvpBroadcastTimer:Cancel()
+		end
+		self.mvpBroadcastTimer = C_Timer.NewTimer(1, function()
+			self:BroadcastBrowseMvps()
+			self.mvpBroadcastTimer = nil
+		end)
+	end
 end
 
 function MPT:ToggleRowExpansion(row)
@@ -327,11 +336,9 @@ function MPT:ExpandRow(row)
 						remoteNote = MPT.viewingData.mvps[nameRealm].note
 					end
 					MPT:AddMvp(nameRealm, UnitName("player"), member.class, remoteNote)
-					MPT:BroadcastMvpAdd(nameRealm)
 					MPT:OnMvpChanged()
 				else
 					MPT:RemoveMvp(nameRealm)
-					MPT:BroadcastMvpRemove(nameRealm)
 					MPT:OnMvpChanged()
 				end
 			end)

@@ -57,8 +57,10 @@ function MPT:PlayerDetect_SendPing(name, realm)
 	scanCache[nameKey] = { pending = true, timestamp = GetTime() }
 
 	local target = MakeWhisperTarget(name, realm)
-	local msg = self:Serialize("PING", {})
+	local msg = self:Serialize("PING", { _target = target })
 	self:SendCommMessage(self.COMM_PREFIX, msg, "WHISPER", target)
+	-- Also send via YELL for cross-faction detection (WHISPER is blocked cross-faction)
+	self:SendCommMessage(self.COMM_PREFIX, msg, "YELL")
 end
 
 -- ── Receive PONG ──────────────────────────────────────────────
@@ -96,27 +98,26 @@ local function AddMMTooltipLines(tooltip, nameKey)
 		local crownIcon = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14:0:0|t"
 		if matched and vouchedBy then
 			local names = {}
-			for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+			for _, v in ipairs(vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 			tooltip:AddLine(crownIcon .. " MVP", 0.2, 1, 0.2)
 			tooltip:AddLine("In your list and " .. table.concat(names, ", ") .. "'s list", 0.8, 0.8, 0.8, true)
 		elseif matched then
 			tooltip:AddLine(crownIcon .. " MVP", 1, 0.85, 0)
 		else
 			local names = {}
-			for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+			for _, v in ipairs(vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 			tooltip:AddLine(crownIcon .. " MVP", 0.3, 0.7, 1)
 			tooltip:AddLine("Vouched by " .. table.concat(names, ", "), 0.8, 0.8, 0.8, true)
 		end
 		if matched then
 			local note = MPT:GetMvpNote(matched)
 			if note and note ~= "" then
-				tooltip:AddLine(note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
+				tooltip:AddLine("|cFF" .. MPT.NOTE_LABEL_HEX .. "Note:|r " .. note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 		end
 		for _, v in ipairs(vouches) do
 			if v.note and v.note ~= "" then
-				tooltip:AddLine(v.sender .. "'s note:", MPT.NOTE_LABEL[1], MPT.NOTE_LABEL[2], MPT.NOTE_LABEL[3])
-				tooltip:AddLine(v.note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
+				tooltip:AddLine("|cFF" .. MPT.NOTE_LABEL_HEX .. MPT:StripRealm(v.sender) .. "'s note:|r " .. v.note, MPT.NOTE_TEXT[1], MPT.NOTE_TEXT[2], MPT.NOTE_TEXT[3], true)
 			end
 		end
 	end
@@ -148,6 +149,14 @@ function MPT:PlayerDetect_RefreshIfRelevant(nameKey)
 			self:PlayerDetect_ShowScanBtn(n, r)
 		end
 	end
+end
+
+function MPT:RefreshTooltipAfterMvpSync()
+	if not lastTooltipUnit or not GameTooltip:IsShown() then return end
+	local _, unit = GameTooltip:GetUnit()
+	if not unit or not UnitIsPlayer(unit) then return end
+	-- Force WoW to fully rebuild the tooltip (clears old lines, re-fires hooks)
+	GameTooltip:SetUnit(unit)
 end
 
 -- ── Tooltip hook ──────────────────────────────────────────────

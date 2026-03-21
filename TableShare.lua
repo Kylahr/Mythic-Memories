@@ -28,24 +28,17 @@ function MPT:OnCommReceived(prefix, message, distribution, sender)
 	local ok, msgType, data = self:Deserialize(message)
 	if not ok then return end
 
-	-- MVP sync messages (from MvpSync.lua)
-	if msgType == "SYNC_REQUEST" then
-		self:SendFullMvpList(sender)
-	elseif msgType == "SYNC_FULL" then
-		self:MergeMvpList(data or {})
-	elseif msgType == "MVP_ADD" then
-		if data and data.name then
-			self:AddMvp(data.name, data.addedBy or sender, data.class, data.note)
-		end
-	elseif msgType == "MVP_REMOVE" then
-		if data and data.name then
-			self:RemoveMvp(data.name)
-		end
+	-- For YELL-based messages, check if we are the intended target
+	if distribution == "YELL" and data and data._target then
+		local myFullName = myName .. "-" .. (GetNormalizedRealmName and GetNormalizedRealmName() or myRealm:gsub(" ", ""))
+		if data._target ~= myName and data._target ~= myFullName then return end
+	end
+
 	-- Table sharing messages
-	elseif msgType == "TABLE_REQ" then
-		self:OnTableRequest(sender, data)
+	if msgType == "TABLE_REQ" then
+		self:OnTableRequest(sender, data, distribution)
 	elseif msgType == "TABLE_LIST_REQ" then
-		self:OnTableListRequest(sender)
+		self:OnTableListRequest(sender, distribution)
 	elseif msgType == "TABLE_LIST_RESP" then
 		self:OnTableListResponse(sender, data)
 	elseif msgType == "TABLE_RESP" then
@@ -59,7 +52,7 @@ function MPT:OnCommReceived(prefix, message, distribution, sender)
 		self:OnBrowseMvpsReceived(sender, data)
 	-- Player detect (lightweight presence check)
 	elseif msgType == "PING" then
-		self:OnPingReceived(sender)
+		self:OnPingReceived(sender, distribution)
 	elseif msgType == "PONG" then
 		self:PlayerDetect_OnPong(sender, data)
 	end
@@ -67,11 +60,23 @@ end
 
 -- ── Player detect (PING/PONG) ────────────────────────────────────
 
-function MPT:OnPingReceived(sender)
+function MPT:OnPingReceived(sender, distribution)
 	-- Only respond if sharing is enabled
 	if self.db.global.shareTable == false then return end
-	local msg = self:Serialize("PONG", { runs = self.db.global.totalRuns or 0 })
-	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
+	-- Dedup: sender sends via both WHISPER and YELL; only respond once
+	local now = GetTime()
+	self._lastPingFrom = self._lastPingFrom or {}
+	if self._lastPingFrom[sender] and (now - self._lastPingFrom[sender]) < 5 then return end
+	self._lastPingFrom[sender] = now
+	local pongData = { runs = self.db.global.totalRuns or 0 }
+	if distribution == "YELL" then
+		pongData._target = sender
+		local msg = self:Serialize("PONG", pongData)
+		self:SendCommMessage(COMM_PREFIX, msg, "YELL")
+	else
+		local msg = self:Serialize("PONG", pongData)
+		self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
+	end
 end
 
 -- ── Table request / response ─────────────────────────────────────
@@ -90,10 +95,12 @@ function MPT:RequestTable(name, realm, tableName)
 	self:Print("Requesting M+ table from " .. target .. "...")
 	self.pendingTableRequest = target
 
-	local data = {}
+	local data = { _target = target }
 	if tableName then data.tableName = tableName end
 	local msg = self:Serialize("TABLE_REQ", data)
 	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", target)
+	-- Also send via YELL for cross-faction (WHISPER is blocked cross-faction)
+	self:SendCommMessage(COMM_PREFIX, msg, "YELL")
 
 	-- Show loading indicator when switching remote tables
 	if tableName and self:IsViewingRemote() then
@@ -194,10 +201,21 @@ function MPT:UnpackSharedRun(packed)
 	}
 end
 
-function MPT:OnTableRequest(sender, data)
+function MPT:OnTableRequest(sender, data, distribution)
+	-- Dedup: sender sends via both WHISPER and YELL; only respond once
+	local now = GetTime()
+	self._lastTableReqFrom = self._lastTableReqFrom or {}
+	if self._lastTableReqFrom[sender] and (now - self._lastTableReqFrom[sender]) < 5 then return end
+	self._lastTableReqFrom[sender] = now
+
 	if self.db.global.shareTable == false then
-		local msg = self:Serialize("TABLE_DENIED", {})
-		self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
+		local denied = { _target = sender }
+		local msg = self:Serialize("TABLE_DENIED", denied)
+		if distribution == "YELL" then
+			self:SendCommMessage(COMM_PREFIX, msg, "YELL")
+		else
+			self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
+		end
 		return
 	end
 
@@ -232,7 +250,7 @@ function MPT:OnTableRequest(sender, data)
 		}
 	end
 
-	local payload = { r = packed, v = mvps }
+	local payload = { r = packed, v = mvps, _target = sender }
 
 	local serialized = self:Serialize("TABLE_RESP", payload)
 
@@ -240,10 +258,18 @@ function MPT:OnTableRequest(sender, data)
 	if LibDeflate then
 		local compressed = LibDeflate:CompressDeflate(serialized, { level = 6 })
 		local encoded = LibDeflate:EncodeForWoWAddonChannel(compressed)
-		local msg = self:Serialize("TABLE_RESP_Z", encoded)
-		self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender, "ALERT")
+		local msg = self:Serialize("TABLE_RESP_Z", { _target = sender, z = encoded })
+		if distribution == "YELL" then
+			self:SendCommMessage(COMM_PREFIX, msg, "YELL", nil, "ALERT")
+		else
+			self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender, "ALERT")
+		end
 	else
-		self:SendCommMessage(COMM_PREFIX, serialized, "WHISPER", sender, "ALERT")
+		if distribution == "YELL" then
+			self:SendCommMessage(COMM_PREFIX, serialized, "YELL", nil, "ALERT")
+		else
+			self:SendCommMessage(COMM_PREFIX, serialized, "WHISPER", sender, "ALERT")
+		end
 	end
 end
 
@@ -297,6 +323,9 @@ end
 
 function MPT:OnTableResponseCompressed(sender, encoded)
 	if not self.pendingTableRequest then return end
+
+	-- Support wrapped format { z = encoded, _target = ... } from YELL responses
+	if type(encoded) == "table" then encoded = encoded.z end
 
 	if not LibDeflate or not encoded then
 		self:Print("Received compressed data but LibDeflate is not available.")
@@ -411,18 +440,31 @@ function MPT:RequestTableList(name, realm)
 	if realm and realm ~= "" then
 		target = name .. "-" .. realm
 	end
-	local msg = self:Serialize("TABLE_LIST_REQ", {})
+	local msg = self:Serialize("TABLE_LIST_REQ", { _target = target })
 	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", target)
+	-- Also send via YELL for cross-faction
+	self:SendCommMessage(COMM_PREFIX, msg, "YELL")
 end
 
-function MPT:OnTableListRequest(sender)
+function MPT:OnTableListRequest(sender, distribution)
+	-- Dedup: sender sends via both WHISPER and YELL; only respond once
+	local now = GetTime()
+	self._lastTableListReqFrom = self._lastTableListReqFrom or {}
+	if self._lastTableListReqFrom[sender] and (now - self._lastTableListReqFrom[sender]) < 5 then return end
+	self._lastTableListReqFrom[sender] = now
+
 	if self.db.global.shareTable == false then return end
 	local names = {}
 	for _, tbl in ipairs(self.db.global.tables or {}) do
 		names[#names + 1] = tbl.name
 	end
-	local msg = self:Serialize("TABLE_LIST_RESP", { tables = names })
-	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
+	local respData = { tables = names, _target = sender }
+	local msg = self:Serialize("TABLE_LIST_RESP", respData)
+	if distribution == "YELL" then
+		self:SendCommMessage(COMM_PREFIX, msg, "YELL")
+	else
+		self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", sender)
+	end
 end
 
 function MPT:OnTableListResponse(sender, data)
@@ -474,6 +516,9 @@ function MPT:OnBrowseMvpsReceived(sender, data)
 		end
 		self.partyMvpCache[sender] = lookup
 	end
+
+	-- Refresh tooltip if currently showing a player affected by this update
+	self:RefreshTooltipAfterMvpSync()
 
 	-- Debounce: print summary once no more lists arrive for 2 seconds
 	if self._browseMvpTimer then
@@ -564,6 +609,7 @@ function MPT:HookUnitMenus()
 		"MENU_UNIT_RAID",
 		"MENU_UNIT_RAID_PLAYER",
 		"MENU_UNIT_FRIEND",
+		"MENU_UNIT_ENEMY_PLAYER",
 	}
 
 	for _, menuTag in ipairs(menuTags) do

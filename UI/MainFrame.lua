@@ -1138,12 +1138,13 @@ function MPT:CreateRow(parent, index)
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:AddLine("MVPs", NOTE_LABEL[1], NOTE_LABEL[2], NOTE_LABEL[3])
 			for _, name in ipairs(row.mvpNames) do
+				local displayName = MPT:StripRealm(name)
 				local note = MPT:GetMvpNote(name)
 				if note and note ~= "" then
-					GameTooltip:AddLine(name, 1, 1, 1)
+					GameTooltip:AddLine(displayName, 1, 1, 1)
 					GameTooltip:AddLine(note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
 				else
-					GameTooltip:AddLine(name, 1, 1, 1)
+					GameTooltip:AddLine(displayName, 1, 1, 1)
 				end
 			end
 			GameTooltip:Show()
@@ -1936,7 +1937,7 @@ function MPT:RefreshMvpsSidePanel()
 			local viewBase = (self.viewingPlayer:match("^([^%-]+)") or self.viewingPlayer):lower()
 			local filtered = {}
 			for _, v in ipairs(vouches) do
-				local senderBase = (v.sender:match("^([^%-]+)") or v.sender):lower()
+				local senderBase = (MPT:StripRealm(v.sender):match("^([^%-]+)") or MPT:StripRealm(v.sender)):lower()
 				if senderBase ~= viewBase then
 					filtered[#filtered + 1] = v
 				end
@@ -1984,24 +1985,21 @@ function MPT:RefreshMvpsSidePanel()
 			else
 				local note = MPT:GetMvpNote(nameRealm)
 				if note and note ~= "" then
-					GameTooltip:AddLine("Note", NOTE_LABEL[1], NOTE_LABEL[2], NOTE_LABEL[3])
 					GameTooltip:AddLine(note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
 					GameTooltip:AddLine(" ")
 				end
 			end
 			if self.vouches and #self.vouches > 0 then
 				for _, v in ipairs(self.vouches) do
-					if v.sender == "you" then
+					if MPT:StripRealm(v.sender) == "you" then
 						GameTooltip:AddLine("Also in your list", 0.2, 1, 0.2)
 						if v.note and v.note ~= "" then
-							GameTooltip:AddLine("Your note:", NOTE_LABEL[1], NOTE_LABEL[2], NOTE_LABEL[3])
-							GameTooltip:AddLine(v.note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
+							GameTooltip:AddLine("|cFF" .. NOTE_LABEL_HEX .. "Your note:|r " .. v.note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
 						end
 					else
-						GameTooltip:AddLine("Also in " .. v.sender .. "'s list", 0.2, 1, 0.2)
+						GameTooltip:AddLine("Also in " .. MPT:StripRealm(v.sender) .. "'s list", 0.2, 1, 0.2)
 						if v.note and v.note ~= "" then
-							GameTooltip:AddLine(v.sender .. "'s note:", NOTE_LABEL[1], NOTE_LABEL[2], NOTE_LABEL[3])
-							GameTooltip:AddLine(v.note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
+							GameTooltip:AddLine("|cFF" .. NOTE_LABEL_HEX .. MPT:StripRealm(v.sender) .. "'s note:|r " .. v.note, NOTE_TEXT[1], NOTE_TEXT[2], NOTE_TEXT[3], true)
 						end
 					end
 				end
@@ -2332,13 +2330,11 @@ function MPT:ShowRemoteMvpContextMenu(nameRealm, class, data)
 		local remoteNote = data and data.note or nil
 		createMenuBtn(-2, "Add to my MVPs", C.textPrimary, function()
 			self:AddMvp(normalized, UnitName("player"), class, remoteNote)
-			self:BroadcastMvpAdd(normalized)
 			self:OnMvpChanged()
 			self:Print(nameRealm .. " added to your MVP list.")
 		end)
 		createMenuBtn(-24, "Add + Edit Note", C.textPrimary, function()
 			self:AddMvp(normalized, UnitName("player"), class, remoteNote)
-			self:BroadcastMvpAdd(normalized)
 			self:OnMvpChanged()
 			self:ShowNotePopup(normalized, nil, class)
 		end)
@@ -3846,7 +3842,7 @@ function MPT:UpdateViewModeUI()
 				crown.icon:SetDesaturated(true)
 				crown.icon:SetVertexColor(0.2, 1, 0.2)
 				local names = {}
-				for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+				for _, v in ipairs(vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 				table.insert(tooltipLines, { text = "MVP \226\128\148 in your list and " .. table.concat(names, ", ") .. "'s list", r = 0.2, g = 1, b = 0.2 })
 			elseif inLocal then
 				crown.icon:SetDesaturated(false)
@@ -3856,21 +3852,20 @@ function MPT:UpdateViewModeUI()
 				crown.icon:SetDesaturated(true)
 				crown.icon:SetVertexColor(0.3, 0.7, 1)
 				local names = {}
-				for _, v in ipairs(vouches) do names[#names + 1] = v.sender end
+				for _, v in ipairs(vouches) do names[#names + 1] = MPT:StripRealm(v.sender) end
 				table.insert(tooltipLines, { text = "MVP \226\128\148 vouched by " .. table.concat(names, ", "), r = 0.3, g = 0.7, b = 1 })
 			end
 			-- Local note
 			if inLocal then
 				local note = self:GetMvpNote(inLocal)
 				if note and note ~= "" then
-					table.insert(tooltipLines, { text = note, r = NOTE_TEXT[1], g = NOTE_TEXT[2], b = NOTE_TEXT[3], wrap = true })
+					table.insert(tooltipLines, { text = "|cFF" .. NOTE_LABEL_HEX .. "Note:|r " .. note, r = NOTE_TEXT[1], g = NOTE_TEXT[2], b = NOTE_TEXT[3], wrap = true })
 				end
 			end
 			-- Party members' notes
 			for _, v in ipairs(vouches) do
 				if v.note and v.note ~= "" then
-					table.insert(tooltipLines, { text = v.sender .. "'s note:", r = NOTE_LABEL[1], g = NOTE_LABEL[2], b = NOTE_LABEL[3] })
-					table.insert(tooltipLines, { text = v.note, r = NOTE_TEXT[1], g = NOTE_TEXT[2], b = NOTE_TEXT[3], wrap = true })
+						table.insert(tooltipLines, { text = "|cFF" .. NOTE_LABEL_HEX .. MPT:StripRealm(v.sender) .. "'s note:|r " .. v.note, r = NOTE_TEXT[1], g = NOTE_TEXT[2], b = NOTE_TEXT[3], wrap = true })
 				end
 			end
 			crown.tooltipLines = tooltipLines
