@@ -197,7 +197,6 @@ function MPT:UnpackSharedRun(packed)
 		playerStats = playerStats,
 		link = packed.lk or "",
 		description = packed.dc or "",
-		mvps = {},
 	}
 end
 
@@ -506,15 +505,8 @@ end
 function MPT:OnBrowseMvpsReceived(sender, data)
 	if not data then return end
 
-	-- Support new format (mvps = {name=note}) and old format (names = {list})
 	if data.mvps then
 		self.partyMvpCache[sender] = data.mvps
-	elseif data.names then
-		local lookup = {}
-		for _, nameRealm in ipairs(data.names) do
-			lookup[nameRealm] = ""
-		end
-		self.partyMvpCache[sender] = lookup
 	end
 
 	-- Refresh tooltip if currently showing a player affected by this update

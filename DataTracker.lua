@@ -227,7 +227,6 @@ function MPT:OnChallengeModeCompleted()
 		members = members,
 		link = "",
 		description = "",
-		mvps = {},
 		playerStats = self:BuildPlayerStats(members, dmStats),
 		totalDeaths = deathCount,
 	}
@@ -262,7 +261,6 @@ function MPT:SaveFailedRun()
 		members = self.activeRun.members,
 		link = "",
 		description = "",
-		mvps = {},
 		playerStats = self:BuildPlayerStats(self.activeRun.members, dmStats),
 		totalDeaths = self:CountDeaths(dmStats),
 	}
@@ -357,7 +355,6 @@ function MPT:EndDevRun()
 		members = members,
 		link = "",
 		description = "",
-		mvps = {},
 		playerStats = self:BuildPlayerStats(members, dmStats),
 		totalDeaths = totalDeaths,
 	}

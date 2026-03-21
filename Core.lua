@@ -64,7 +64,6 @@ function MPT:LoadSampleRun()
 		},
 		link = "",
 		description = "Clean run, good coordination on last boss.",
-		mvps = {},
 		playerStats = {
 			["Player-1-100"] = { name = "Mrglgrl",  class = "WARRIOR", role = "TANK",    damage = 920000,  dps = 498,  healing = 340000,  hps = 184,  damageTaken = 3200000, deaths = 0, interrupts = 18 },
 			["Player-1-200"] = { name = "Grllmrgl", class = "PRIEST",  role = "HEALER",  damage = 185000,  dps = 100,  healing = 1680000, hps = 910,  damageTaken = 520000,  deaths = 0, interrupts = 3 },

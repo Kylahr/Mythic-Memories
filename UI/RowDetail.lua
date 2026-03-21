@@ -312,11 +312,11 @@ function MPT:ExpandRow(row)
 					nameBtn.star:SetVertexColor(0.3, 0.7, 1)    -- light vibrant blue
 				else
 					nameBtn.star:SetDesaturated(false)
-					nameBtn.star:SetVertexColor(1, 0.85, 0)    -- fixed gold (theme-independent)     -- bright gold
+					nameBtn.star:SetVertexColor(1, 0.85, 0)    -- fixed gold (theme-independent)
 				end
 			else
 				nameBtn.star:SetDesaturated(false)
-				nameBtn.star:SetVertexColor(1, 0.85, 0)    -- fixed gold (theme-independent)         -- bright gold
+				nameBtn.star:SetVertexColor(1, 0.85, 0)    -- fixed gold (theme-independent)
 			end
 		else
 			nameBtn.star:Hide()

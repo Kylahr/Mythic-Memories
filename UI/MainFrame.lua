@@ -2791,13 +2791,6 @@ function MPT:ApplyFilterPopup()
 	self.filterPopup:Hide()
 end
 
-function MPT:ResetFilterBtnStyle()
-	if self.filterBtn then
-		self.filterBtn.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
-		self.filterBtn.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
-	end
-end
-
 function MPT:ToggleFilterPopup()
 	if not self.filterPopup then
 		self:CreateFilterPopup()
@@ -2805,7 +2798,10 @@ function MPT:ToggleFilterPopup()
 
 	if self.filterPopup:IsShown() then
 		self.filterPopup:Hide()
-		self:ResetFilterBtnStyle()
+		if self.filterBtn then
+			self.filterBtn.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+			self.filterBtn.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		end
 	else
 		self:HideAllPopups()
 		self:PopulateFilterDropdowns()
