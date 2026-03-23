@@ -249,7 +249,8 @@ function MPT:OnTableRequest(sender, data, distribution)
 		}
 	end
 
-	local payload = { r = packed, v = mvps, _target = sender }
+	local _, myClass = UnitClass("player")
+	local payload = { r = packed, v = mvps, sc = myClass, _target = sender }
 
 	local serialized = self:Serialize("TABLE_RESP", payload)
 
@@ -313,7 +314,7 @@ function MPT:OnTableResponse(sender, data)
 		end
 	end
 
-	self:EnterViewMode(sender, { runs = runs, mvps = mvps })
+	self:EnterViewMode(sender, { runs = runs, mvps = mvps, senderClass = data.sc })
 
 	-- Also request their table list for the remote dropdown
 	local name, realm = sender:match("^([^%-]+)%-?(.*)$")

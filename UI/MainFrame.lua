@@ -253,6 +253,9 @@ function MPT:ApplyTheme(themeKey)
 		self.tableManagerRows = nil
 		self.remoteTableDD = nil
 		self.remoteTableListFrame = nil
+		self.viewTitleFrame = nil
+		self.viewTitle = nil
+		self.viewTitleCrown = nil
 		self.loadingFrame = nil
 		self.moveSubmenu = nil
 		if self.PlayerDetect_DestroyUI then
@@ -3762,12 +3765,24 @@ function MPT:UpdateViewModeUI()
 	if isViewing then
 		local displayName = self.viewingPlayer or "Unknown"
 		local shortName = displayName:match("^([^%-]+)") or displayName
-		-- Look up class from viewed data or local MVP list
-		local viewClass = nil
-		if self.viewingData and self.viewingData.runs then
+		-- Look up class: sender's class from payload, then party units, then run data, then MVP lists
+		local viewClass = self.viewingData and self.viewingData.senderClass or nil
+		-- 1) Scan party for the player (they're likely in our group)
+		for _, unit in ipairs({ "party1", "party2", "party3", "party4" }) do
+			if UnitExists(unit) then
+				local uName = UnitName(unit)
+				if uName == shortName then
+					local _, cls = UnitClass(unit)
+					viewClass = cls
+					break
+				end
+			end
+		end
+		-- 2) Search shared run members
+		if not viewClass and self.viewingData and self.viewingData.runs then
 			for _, run in ipairs(self.viewingData.runs) do
 				for _, m in ipairs(run.members or {}) do
-					if m.name == shortName then
+					if m.name == shortName and m.class then
 						viewClass = m.class
 						break
 					end
@@ -3775,10 +3790,20 @@ function MPT:UpdateViewModeUI()
 				if viewClass then break end
 			end
 		end
+		-- 3) Check local MVP list
 		if not viewClass then
 			local matched = self:MatchMvpName(displayName) or self:MatchMvpName(shortName)
 			if matched and self.db.global.mvps[matched] then
 				viewClass = self.db.global.mvps[matched].class
+			end
+		end
+		-- 4) Check remote player's own MVP list
+		if not viewClass and self.viewingData and self.viewingData.mvps then
+			for nameRealm, data in pairs(self.viewingData.mvps) do
+				if nameRealm:match("^([^%-]+)") == shortName and data.class then
+					viewClass = data.class
+					break
+				end
 			end
 		end
 		self.viewingClass = viewClass
@@ -3792,7 +3817,8 @@ function MPT:UpdateViewModeUI()
 			vtf:SetPoint("TOPRIGHT", self.mainFrame, "TOPRIGHT", 0, 0)
 			vtf:SetHeight(32)
 			vtf:SetFrameLevel(self.mainFrame:GetFrameLevel() + 20)
-			self.viewTitle = vtf:CreateFontString(nil, "OVERLAY", "MPTFont_Title")
+			self.viewTitle = vtf:CreateFontString(nil, "OVERLAY")
+			self.viewTitle:SetFont(FONT_FILE, 14, "")
 			self.viewTitle:SetPoint("CENTER", vtf, "CENTER", 0, 4)
 			-- Crown frame for MVP (anchored left of title text, interactive for tooltip)
 			local crownFrame = CreateFrame("Frame", nil, vtf)
@@ -3821,8 +3847,7 @@ function MPT:UpdateViewModeUI()
 			self.viewTitleCrown = crownFrame
 			self.viewTitleFrame = vtf
 		end
-		-- Neutral base color so inline codes work
-		self.viewTitle:SetTextColor(C.textNeutral[1], C.textNeutral[2], C.textNeutral[3])
+		self.viewTitle:SetTextColor(1, 1, 1)
 		self.viewTitle:SetText(hex .. shortName .. "'s |r" .. goldHex .. "Table|r")
 		-- Crown color coding: gold (mine), blue (party's), green (both)
 		local inLocal = self:MatchMvpName(displayName) or self:MatchMvpName(shortName)
