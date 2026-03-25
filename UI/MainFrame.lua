@@ -660,11 +660,24 @@ local function getTotalWidth()
 	return total
 end
 
+local function calcFrameWidth()
+	local mainColWidth = getTotalWidth()
+	local statWidth = MPT:GetStatColumnsTotalWidth()
+	-- NAME(160) + role(30) + stat columns + detail padding (~42)
+	local detailWidth = 160 + 30 + statWidth + 42
+	return math.max(mainColWidth + 30, detailWidth, 730)
+end
+
+function MPT:ResizeMainFrame()
+	if not self.mainFrame then return end
+	local newWidth = calcFrameWidth()
+	self.mainFrame:SetWidth(newWidth)
+end
+
 function MPT:CreateMainFrame()
 	if self.mainFrame then return end
 
-	local tableWidth = getTotalWidth()
-	local totalWidth = math.max(tableWidth + 18 + 12, 730)
+	local totalWidth = calcFrameWidth()
 	-- 26 (title bar) + 30 (filter bar gap) + HEADER_HEIGHT + rows = exact fit
 	local totalHeight = 26 + 30 + HEADER_HEIGHT + (ROW_HEIGHT * VISIBLE_ROWS)
 
@@ -947,6 +960,24 @@ function MPT:CreateFilterBar(parent)
 		end
 	end)
 	self.tableBtn = tableBtn
+
+	-- Stats column toggle button
+	local statsBtn = self:CreateModernButton(bar, 45, 20, "Stats")
+	statsBtn:SetPoint("LEFT", tableBtn, "RIGHT", 8, 0)
+	statsBtn:SetScript("OnClick", function()
+		MPT:ToggleStatsPopup()
+	end)
+	statsBtn:SetScript("OnEnter", function(self)
+		self.bg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 1)
+		self.label:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+	end)
+	statsBtn:SetScript("OnLeave", function(self)
+		if not (MPT.statsPopup and MPT.statsPopup:IsShown()) then
+			self.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+			self.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		end
+	end)
+	self.statsBtn = statsBtn
 
 	self.filterBar = bar
 	self.filterPlayerBox = playerBox
@@ -3010,7 +3041,7 @@ function MPT:CreateOptionsPanel()
 	if self.optionsPanel then return end
 
 	local panel = CreateFrame("Frame", "MPTOptionsPanel", self.mainFrame)
-	panel:SetSize(220, 290)
+	panel:SetSize(220, 264)
 	panel:SetPoint("TOPRIGHT", self.optionsBtn, "BOTTOMRIGHT", 0, -4)
 	panel:SetFrameStrata("DIALOG")
 
@@ -3034,17 +3065,9 @@ function MPT:CreateOptionsPanel()
 	end
 	panel.notifCheck = notifCheck
 
-	-- Sync Messages checkbox
-	local syncCheck = self:CreateModernCheckbox(panel, "Sync Messages")
-	syncCheck:SetPoint("TOPLEFT", notifCheck, "BOTTOMLEFT", 0, -6)
-	syncCheck._onToggle = function(val)
-		MPT.db.global.syncMessages = val
-	end
-	panel.syncCheck = syncCheck
-
 	-- Notification Sound checkbox
 	local soundCheck = self:CreateModernCheckbox(panel, "Notification Sound")
-	soundCheck:SetPoint("TOPLEFT", syncCheck, "BOTTOMLEFT", 0, -6)
+	soundCheck:SetPoint("TOPLEFT", notifCheck, "BOTTOMLEFT", 0, -6)
 	soundCheck._onToggle = function(val)
 		MPT.db.global.mvpSound = val
 	end
@@ -3139,7 +3162,6 @@ function MPT:ToggleOptionsPanel()
 		self:HideAllPopups()
 		self.optionsPanel.shareCheck:SetChecked(self.db.global.shareTable)
 		self.optionsPanel.notifCheck:SetChecked(self.db.global.mvpNotifications ~= false)
-		self.optionsPanel.syncCheck:SetChecked(self.db.global.syncMessages ~= false)
 		self.optionsPanel.soundCheck:SetChecked(self.db.global.mvpSound ~= false)
 		self.optionsPanel:Show()
 	end
@@ -3948,5 +3970,300 @@ function MPT:SetMvpPanelOpen(open)
 	-- Update arrow direction: « = panel open (collapse), » = panel closed (expand)
 	if self.mvpToggleBtn and self.mvpToggleBtn.arrowLabel then
 		self.mvpToggleBtn.arrowLabel:SetText(open and "\194\171" or "\194\187") -- « or »
+	end
+end
+
+-- ── Stats Column Toggle Popup ───────────────────────────────────
+
+function MPT:ToggleStatsPopup()
+	if self.statsPopup and self.statsPopup:IsShown() then
+		self:HideAllPopups()
+		return
+	end
+	self:HideAllPopups()
+	if not self.statsPopup then
+		self:CreateStatsPopup()
+	end
+	-- Initialize working copy from saved settings
+	self.statsWorkingCopy = {}
+	for _, col in ipairs(self.db.global.statColumns) do
+		self.statsWorkingCopy[#self.statsWorkingCopy + 1] = {
+			key = col.key, label = col.label, width = col.width, visible = col.visible,
+		}
+	end
+	self:RefreshStatsPopup()
+	self.statsPopup:Show()
+	-- Highlight the button
+	if self.statsBtn then
+		self.statsBtn.bg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 1)
+		self.statsBtn.label:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+	end
+end
+
+function MPT:CreateStatsPopup()
+	local ROW_H = 26
+	local POPUP_W = 230
+	local ROWS = 9
+	local POPUP_H = 30 + (ROWS * ROW_H) + 10 + 26 + 10 -- title + rows + gap + buttons + padding
+
+	local panel = CreateFrame("Frame", "MPTStatsPopup", self.mainFrame)
+	panel:SetSize(POPUP_W, POPUP_H)
+	panel:SetPoint("TOP", self.statsBtn, "BOTTOM", 0, -4)
+	panel:SetFrameStrata("DIALOG")
+	panel:EnableMouse(true)
+
+	local bg = panel:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(C.popupBg[1], C.popupBg[2], C.popupBg[3], 1)
+
+	-- Border
+	local bTop = panel:CreateTexture(nil, "BORDER")
+	bTop:SetPoint("TOPLEFT") bTop:SetPoint("TOPRIGHT") bTop:SetHeight(1)
+	bTop:SetColorTexture(C.borderColor[1], C.borderColor[2], C.borderColor[3], 1)
+	local bBot = panel:CreateTexture(nil, "BORDER")
+	bBot:SetPoint("BOTTOMLEFT") bBot:SetPoint("BOTTOMRIGHT") bBot:SetHeight(1)
+	bBot:SetColorTexture(C.borderColor[1], C.borderColor[2], C.borderColor[3], 1)
+	local bLeft = panel:CreateTexture(nil, "BORDER")
+	bLeft:SetPoint("TOPLEFT") bLeft:SetPoint("BOTTOMLEFT") bLeft:SetWidth(1)
+	bLeft:SetColorTexture(C.borderColor[1], C.borderColor[2], C.borderColor[3], 1)
+	local bRight = panel:CreateTexture(nil, "BORDER")
+	bRight:SetPoint("TOPRIGHT") bRight:SetPoint("BOTTOMRIGHT") bRight:SetWidth(1)
+	bRight:SetColorTexture(C.borderColor[1], C.borderColor[2], C.borderColor[3], 1)
+
+	-- Title
+	local title = panel:CreateFontString(nil, "OVERLAY", "MPTFont_Header")
+	title:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -8)
+	title:SetText("Stat Columns")
+	title:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+
+	-- Drag ghost (floating copy that follows cursor during drag)
+	local ghost = CreateFrame("Frame", nil, panel)
+	ghost:SetSize(POPUP_W - 20, ROW_H)
+	ghost:SetFrameStrata("TOOLTIP")
+	ghost:SetAlpha(0.7)
+	local ghostBg = ghost:CreateTexture(nil, "BACKGROUND")
+	ghostBg:SetAllPoints()
+	ghostBg:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 0.3)
+	local ghostLabel = ghost:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+	ghostLabel:SetPoint("LEFT", 26, 0)
+	ghostLabel:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+	ghost.label = ghostLabel
+	ghost:Hide()
+	panel.ghost = ghost
+
+	-- Drag state
+	panel.dragIndex = nil
+
+	-- Row container
+	panel.rows = {}
+	for i = 1, ROWS do
+		local row = CreateFrame("Frame", nil, panel)
+		row:SetSize(POPUP_W - 20, ROW_H)
+		row:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -(28 + (i - 1) * ROW_H))
+		row:EnableMouse(true)
+
+		-- Row hover background
+		local rowBg = row:CreateTexture(nil, "BACKGROUND")
+		rowBg:SetAllPoints()
+		rowBg:SetColorTexture(0, 0, 0, 0)
+		row.bg = rowBg
+
+		-- Drop indicator line
+		local dropLine = row:CreateTexture(nil, "OVERLAY")
+		dropLine:SetHeight(2)
+		dropLine:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 1)
+		dropLine:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 1)
+		dropLine:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 1)
+		dropLine:Hide()
+		row.dropLine = dropLine
+
+		row:SetScript("OnEnter", function(self)
+			if not panel.dragIndex then
+				self.bg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 0.3)
+			end
+		end)
+		row:SetScript("OnLeave", function(self)
+			if not panel.dragIndex then
+				self.bg:SetColorTexture(0, 0, 0, 0)
+			end
+			self.dropLine:Hide()
+		end)
+
+		-- Drag handle (the whole row area right of checkbox)
+		local handle = CreateFrame("Frame", nil, row)
+		handle:SetPoint("LEFT", row, "LEFT", 22, 0)
+		handle:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+		handle:SetHeight(ROW_H)
+		handle:EnableMouse(true)
+		handle:RegisterForDrag("LeftButton")
+		handle.rowIndex = i
+
+		-- Drag cursor icon
+		local grip = handle:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		grip:SetPoint("RIGHT", handle, "RIGHT", -4, 0)
+		grip:SetText("=")
+		grip:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+		handle.grip = grip
+
+		handle:SetScript("OnEnter", function(self)
+			if not panel.dragIndex then
+				self.grip:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
+				row.bg:SetColorTexture(C.btnHover[1], C.btnHover[2], C.btnHover[3], 0.3)
+			end
+		end)
+		handle:SetScript("OnLeave", function(self)
+			if not panel.dragIndex then
+				self.grip:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+				row.bg:SetColorTexture(0, 0, 0, 0)
+			end
+		end)
+
+		handle:SetScript("OnDragStart", function(self)
+			local idx = self.rowIndex
+			panel.dragIndex = idx
+			-- Clear all row highlights
+			for _, r in ipairs(panel.rows) do
+				r.bg:SetColorTexture(0, 0, 0, 0)
+			end
+			local wc = MPT.statsWorkingCopy[idx]
+			if wc then
+				ghost.label:SetText(wc.label)
+				ghost:Show()
+				ghost:SetScript("OnUpdate", function(g)
+					local scale = g:GetEffectiveScale()
+					local cx, cy = GetCursorPosition()
+					g:ClearAllPoints()
+					g:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx / scale, cy / scale)
+				end)
+			end
+		end)
+
+		handle:SetScript("OnDragStop", function(self)
+			ghost:Hide()
+			ghost:SetScript("OnUpdate", nil)
+			local fromIdx = panel.dragIndex
+			panel.dragIndex = nil
+
+			if not fromIdx then return end
+
+			-- Determine drop position from cursor Y
+			local scale = panel:GetEffectiveScale()
+			local _, cy = GetCursorPosition()
+			cy = cy / scale
+
+			local wc = MPT.statsWorkingCopy
+			local toIdx = #wc -- default: drop at end
+
+			for ri, r in ipairs(panel.rows) do
+				if ri <= #wc then
+					local top = r:GetTop()
+					local bot = r:GetBottom()
+					if top and bot and cy >= bot then
+						toIdx = ri
+						break
+					end
+				end
+			end
+
+			-- Hide all drop lines
+			for _, r in ipairs(panel.rows) do
+				r.dropLine:Hide()
+				r.bg:SetColorTexture(0, 0, 0, 0)
+			end
+
+			if toIdx ~= fromIdx and toIdx ~= fromIdx then
+				-- Remove from old position, insert at new
+				local item = table.remove(wc, fromIdx)
+				if toIdx > fromIdx then toIdx = toIdx - 1 end
+				table.insert(wc, toIdx, item)
+				MPT:RefreshStatsPopup()
+			end
+		end)
+
+		row.handle = handle
+
+		-- Checkbox (reuse CreateModernCheckbox)
+		local cb = MPT:CreateModernCheckbox(row, nil, 16)
+		cb:SetPoint("LEFT", row, "LEFT", 0, 0)
+		cb.rowIndex = i
+		cb._onToggle = function(checked)
+			local wc = MPT.statsWorkingCopy[cb.rowIndex]
+			if wc then
+				wc.visible = checked
+				MPT:RefreshStatsPopup()
+			end
+		end
+		row.cb = cb
+
+		-- Label
+		local lbl = row:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		lbl:SetPoint("LEFT", cb, "RIGHT", 8, 0)
+		lbl:SetWidth(130)
+		lbl:SetJustifyH("LEFT")
+		lbl:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		row.label = lbl
+
+		panel.rows[i] = row
+	end
+
+	-- Default button
+	local defaultBtn = self:CreateModernButton(panel, 70, 22, "Default")
+	defaultBtn:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 20, 8)
+	defaultBtn:SetScript("OnClick", function()
+		-- Reset working copy to master defaults
+		MPT.statsWorkingCopy = {}
+		for _, col in ipairs(MPT.DB_DEFAULTS.global.statColumns) do
+			MPT.statsWorkingCopy[#MPT.statsWorkingCopy + 1] = {
+				key = col.key, label = col.label, width = col.width, visible = col.visible,
+			}
+		end
+		MPT:RefreshStatsPopup()
+	end)
+	panel.defaultBtn = defaultBtn
+
+	-- Apply button
+	local applyBtn = self:CreateModernButton(panel, 70, 22, "Apply")
+	applyBtn:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -20, 8)
+	applyBtn:SetScript("OnClick", function()
+		MPT.db.global.statColumns = MPT.statsWorkingCopy
+		MPT.statsWorkingCopy = nil
+		MPT.statsPopup:Hide()
+		if MPT.statsBtn then
+			MPT.statsBtn.bg:SetColorTexture(C.btnBg[1], C.btnBg[2], C.btnBg[3], 1)
+			MPT.statsBtn.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+		end
+		MPT:ResizeMainFrame()
+		if MPT.mainFrame and MPT.mainFrame:IsShown() then
+			MPT:RefreshTable()
+		end
+	end)
+	panel.applyBtn = applyBtn
+
+	panel:Hide()
+	self.statsPopup = panel
+end
+
+function MPT:RefreshStatsPopup()
+	if not self.statsPopup or not self.statsWorkingCopy then return end
+
+	local wc = self.statsWorkingCopy
+	for i, row in ipairs(self.statsPopup.rows) do
+		local col = wc[i]
+		if col then
+			row:Show()
+			row.cb.rowIndex = i
+			row.cb:SetChecked(col.visible)
+			row.handle.rowIndex = i
+			row.label:SetText(col.label)
+			if col.visible then
+				row.label:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
+			else
+				row.label:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
+			end
+			row.bg:SetColorTexture(0, 0, 0, 0)
+			row.dropLine:Hide()
+		else
+			row:Hide()
+		end
 	end
 end

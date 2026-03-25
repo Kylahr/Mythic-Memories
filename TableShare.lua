@@ -513,21 +513,6 @@ function MPT:OnBrowseMvpsReceived(sender, data)
 	-- Refresh tooltip if currently showing a player affected by this update
 	self:RefreshTooltipAfterMvpSync()
 
-	-- Debounce: print summary once no more lists arrive for 2 seconds
-	if self._browseMvpTimer then
-		self._browseMvpTimer:Cancel()
-	end
-	self._browseMvpTimer = C_Timer.NewTimer(2, function()
-		MPT._browseMvpTimer = nil
-		if MPT.db and MPT.db.global.syncMessages == false then return end
-		local names = {}
-		for name in pairs(MPT.partyMvpCache) do
-			names[#names + 1] = name:match("^([^%-]+)") or name
-		end
-		if #names > 0 then
-			MPT:Print("|cFF808080Synced MVP lists:|r " .. table.concat(names, ", "))
-		end
-	end)
 end
 
 function MPT:PurgePartyMvpCache()

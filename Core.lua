@@ -8,6 +8,7 @@ function MPT:OnInitialize()
 	self:MigrateMvpKeys()
 	self:MigrateTotalRuns()
 	self:MigrateCharActiveTable()
+	self:MigrateStatColumns()
 	self:LoadSampleRun()
 
 	self:RegisterChatCommand("mm", "SlashCommand")
@@ -19,19 +20,30 @@ function MPT:OnInitialize()
 		OnClick = function(_, button)
 			if button == "LeftButton" then
 				MPT:ToggleUI()
-			elseif button == "RightButton" then
-				if IsInGroup() then
-					MPT:BroadcastBrowseMvps()
-					MPT:Print("Refreshing party MVP lists...")
-				else
-					MPT:Print("Not in a group.")
-				end
 			end
 		end,
 		OnTooltipShow = function(tt)
 			tt:AddLine("Mythic Memories")
 			tt:AddLine("Click to toggle M+ run history", 1, 1, 1)
-			tt:AddLine("Right-click to refresh party MVP lists", 0.7, 0.7, 0.7)
+			if MPT.partyMvpCache then
+				local names = {}
+				for name in pairs(MPT.partyMvpCache) do
+					names[#names + 1] = name:match("^([^%-]+)") or name
+				end
+				if #names > 0 then
+					table.sort(names)
+					tt:AddLine(" ")
+					tt:AddLine("Synced with:", 0.5, 0.8, 1)
+					local PER_LINE = 3
+					for i = 1, #names, PER_LINE do
+						local line = {}
+						for j = i, math.min(i + PER_LINE - 1, #names) do
+							line[#line + 1] = names[j]
+						end
+						tt:AddLine("  " .. table.concat(line, ", "), 0.7, 0.7, 0.7)
+					end
+				end
+			end
 		end,
 	})
 	LibStub("LibDBIcon-1.0"):Register(ADDON_NAME, ldb, self.db.global.minimap)
@@ -83,9 +95,8 @@ function MPT:OnEnable()
 	if self.ApplyTheme and self.db.global.theme then
 		self:ApplyTheme(self.db.global.theme)
 	end
-	self:TableShare_Enable()
 	self:DataTracker_Enable()
-
+	self:TableShare_Enable()
 	self:GroupFinderHook_Enable()
 	self:HookUnitMenus()
 	self:PartyMvpBrowse_Enable()

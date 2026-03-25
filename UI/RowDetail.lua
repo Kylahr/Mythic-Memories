@@ -25,19 +25,12 @@ local function DC()
 	}
 end
 
-local STAT_COLUMNS = {
-	{ label = "NAME",       width = 160 },
-	{ label = "",            width = 30 },
-	{ label = "DAMAGE",     width = 75 },
-	{ label = "DPS",        width = 55 },
-	{ label = "HEALING",    width = 75 },
-	{ label = "HPS",        width = 55 },
-	{ label = "DMG TKN",    width = 70 },
-	{ label = "DEATHS",     width = 50 },
-	{ label = "INTS",       width = 50 },
-}
+-- Fixed columns (always shown): NAME + role icon
+local FIXED_NAME_WIDTH = 160
+local FIXED_ROLE_WIDTH = 30
 
-MPT.STAT_COLUMNS = STAT_COLUMNS -- expose for tests
+-- Count-based stats use tostring(), everything else uses AbbreviateNumber
+local COUNT_STATS = { deaths = true, interrupts = true, dispels = true }
 
 -- Role icons via texture + tex coords (desaturated for pictogram look)
 local ROLE_TEX = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
@@ -204,9 +197,42 @@ function MPT:ExpandRow(row)
 	headerBg:SetColorTexture(dc.headerBg[1], dc.headerBg[2], dc.headerBg[3], 1)
 	headerBg:Show()
 
+	local visibleStats = self:GetVisibleStatColumns()
 	local cellIdx = 0
 	local xOff = DETAIL_PADDING + CLASS_BAR_WIDTH + 6
-	for _, col in ipairs(STAT_COLUMNS) do
+
+	-- NAME header
+	cellIdx = cellIdx + 1
+	local nameHeader = detail.cells[cellIdx]
+	if not nameHeader then
+		nameHeader = detail:CreateFontString(nil, "OVERLAY", "MPTFont_Label")
+		detail.cells[cellIdx] = nameHeader
+	end
+	nameHeader:ClearAllPoints()
+	nameHeader:SetPoint("TOPLEFT", detail, "TOPLEFT", xOff, -(DETAIL_PADDING + 6))
+	nameHeader:SetWidth(FIXED_NAME_WIDTH)
+	nameHeader:SetJustifyH("LEFT")
+	nameHeader:SetText("NAME")
+	nameHeader:SetTextColor(dc.accent[1], dc.accent[2], dc.accent[3])
+	nameHeader:Show()
+	xOff = xOff + FIXED_NAME_WIDTH
+
+	-- Role icon header (empty label)
+	cellIdx = cellIdx + 1
+	local roleHeader = detail.cells[cellIdx]
+	if not roleHeader then
+		roleHeader = detail:CreateFontString(nil, "OVERLAY", "MPTFont_Label")
+		detail.cells[cellIdx] = roleHeader
+	end
+	roleHeader:ClearAllPoints()
+	roleHeader:SetPoint("TOPLEFT", detail, "TOPLEFT", xOff, -(DETAIL_PADDING + 6))
+	roleHeader:SetWidth(FIXED_ROLE_WIDTH)
+	roleHeader:SetText("")
+	roleHeader:Show()
+	xOff = xOff + FIXED_ROLE_WIDTH
+
+	-- Dynamic stat headers
+	for _, col in ipairs(visibleStats) do
 		cellIdx = cellIdx + 1
 		local cell = detail.cells[cellIdx]
 		if not cell then
@@ -298,7 +324,7 @@ function MPT:ExpandRow(row)
 
 		nameBtn:ClearAllPoints()
 		nameBtn:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PADDING + CLASS_BAR_WIDTH + 3, -topY)
-		nameBtn:SetWidth(STAT_COLUMNS[1].width)
+		nameBtn:SetWidth(FIXED_NAME_WIDTH)
 		nameBtn:SetHeight(DETAIL_ROW_HEIGHT)
 
 		if isMvp then
@@ -323,7 +349,7 @@ function MPT:ExpandRow(row)
 		end
 
 		nameBtn.label:SetText(nameRealm)
-		nameBtn.label:SetWidth(STAT_COLUMNS[1].width - 24)
+		nameBtn.label:SetWidth(FIXED_NAME_WIDTH - 24)
 		nameBtn.label:SetTextColor(r, g, b)
 
 		nameBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -418,7 +444,7 @@ function MPT:ExpandRow(row)
 			detail.roleIcons[mIdx] = roleIcon
 		end
 		roleIcon:ClearAllPoints()
-		xOff = DETAIL_PADDING + CLASS_BAR_WIDTH + 3 + STAT_COLUMNS[1].width
+		xOff = DETAIL_PADDING + CLASS_BAR_WIDTH + 3 + FIXED_NAME_WIDTH
 		roleIcon:SetPoint("TOPLEFT", detail, "TOPLEFT", xOff + 4, -(topY + 5))
 		local coords = ROLE_COORDS[member.role]
 		if coords then
@@ -430,19 +456,9 @@ function MPT:ExpandRow(row)
 			roleIcon:Hide()
 		end
 
-		-- Stat cells (skip name and role columns)
-		local values = {
-			self:AbbreviateNumber(stats.damage or 0),
-			self:AbbreviateNumber(stats.dps or 0),
-			self:AbbreviateNumber(stats.healing or 0),
-			self:AbbreviateNumber(stats.hps or 0),
-			self:AbbreviateNumber(stats.damageTaken or 0),
-			tostring(stats.deaths or 0),
-			tostring(stats.interrupts or 0),
-		}
-
-		xOff = DETAIL_PADDING + CLASS_BAR_WIDTH + 3 + STAT_COLUMNS[1].width + STAT_COLUMNS[2].width
-		for vIdx, val in ipairs(values) do
+		-- Stat cells (dynamic, based on visible stat columns)
+		xOff = DETAIL_PADDING + CLASS_BAR_WIDTH + 3 + FIXED_NAME_WIDTH + FIXED_ROLE_WIDTH
+		for _, col in ipairs(visibleStats) do
 			cellIdx = cellIdx + 1
 			local cell = detail.cells[cellIdx]
 			if not cell then
@@ -451,14 +467,29 @@ function MPT:ExpandRow(row)
 			end
 			cell:ClearAllPoints()
 			cell:SetPoint("TOPLEFT", detail, "TOPLEFT", xOff, -(topY + 7))
-			cell:SetWidth(STAT_COLUMNS[vIdx + 2].width)
+			cell:SetWidth(col.width)
 			cell:SetJustifyH("LEFT")
+
+			local raw = stats[col.key]
+			local val
+			if raw == nil then
+				val = "-"
+			elseif COUNT_STATS[col.key] then
+				val = tostring(raw)
+			else
+				val = self:AbbreviateNumber(raw)
+			end
 			cell:SetText(val)
 			cell:SetTextColor(dc.text[1], dc.text[2], dc.text[3])
 			cell:Show()
 
-			xOff = xOff + STAT_COLUMNS[vIdx + 2].width
+			xOff = xOff + col.width
 		end
+	end
+
+	-- Hide leftover cells from previous renders with more columns
+	for i = cellIdx + 1, #detail.cells do
+		detail.cells[i]:Hide()
 	end
 
 	-- ── Action bar background zone ─────────────────────────────

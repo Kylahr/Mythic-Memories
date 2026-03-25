@@ -15,12 +15,22 @@ MPT.DB_DEFAULTS = {
 		shareTable = true,
 		mvpNotifications = true,
 		mvpSound = true,
-		syncMessages = true,
 		notificationPos = { point = "TOP", x = 0, y = -200 },
 		scanBtnPos = { point = "CENTER", x = 200, y = -200 },
 		theme = "coffee",
 		mvpPanelOpen = true,
 		totalRuns = 0,
+		statColumns = {
+			{ key = "damage",      label = "DAMAGE",  width = 75, visible = true },
+			{ key = "dps",         label = "DPS",     width = 55, visible = true },
+			{ key = "healing",     label = "HEALING", width = 75, visible = true },
+			{ key = "hps",         label = "HPS",     width = 55, visible = true },
+			{ key = "damageTaken", label = "DMG TKN", width = 70, visible = true },
+			{ key = "avoidable",   label = "AVOID",   width = 70, visible = false },
+			{ key = "deaths",      label = "DEATHS",  width = 50, visible = true },
+			{ key = "interrupts",  label = "INTS",    width = 50, visible = true },
+			{ key = "dispels",     label = "DISPELS", width = 55, visible = false },
+		},
 	},
 }
 
@@ -486,6 +496,74 @@ function MPT:MigrateMvpKeys()
 		mvps[entry.old] = nil
 	end
 end
+
+-- ── Stat column helpers ──────────────────────────────────────────
+
+local STAT_COLUMN_MASTER = {
+	{ key = "damage",      label = "DAMAGE",  width = 75, visible = true },
+	{ key = "dps",         label = "DPS",     width = 55, visible = true },
+	{ key = "healing",     label = "HEALING", width = 75, visible = true },
+	{ key = "hps",         label = "HPS",     width = 55, visible = true },
+	{ key = "damageTaken", label = "DMG TKN", width = 70, visible = true },
+	{ key = "avoidable",   label = "AVOID",   width = 70, visible = false },
+	{ key = "deaths",      label = "DEATHS",  width = 50, visible = true },
+	{ key = "interrupts",  label = "INTS",    width = 50, visible = true },
+	{ key = "dispels",     label = "DISPELS", width = 55, visible = false },
+}
+
+function MPT:MigrateStatColumns()
+	local saved = self.db.global.statColumns
+	if not saved or #saved == 0 then
+		self.db.global.statColumns = {}
+		for _, col in ipairs(STAT_COLUMN_MASTER) do
+			self.db.global.statColumns[#self.db.global.statColumns + 1] = {
+				key = col.key, label = col.label, width = col.width, visible = col.visible,
+			}
+		end
+		return
+	end
+	-- Ensure all master keys exist (handles addon upgrades adding new stats)
+	local existing = {}
+	for _, col in ipairs(saved) do
+		existing[col.key] = true
+	end
+	for _, col in ipairs(STAT_COLUMN_MASTER) do
+		if not existing[col.key] then
+			saved[#saved + 1] = {
+				key = col.key, label = col.label, width = col.width, visible = col.visible,
+			}
+		end
+	end
+end
+
+function MPT:GetVisibleStatColumns()
+	local result = {}
+	for _, col in ipairs(self.db.global.statColumns) do
+		if col.visible then
+			result[#result + 1] = col
+		end
+	end
+	return result
+end
+
+function MPT:GetStatColumnsTotalWidth()
+	local total = 0
+	for _, col in ipairs(self.db.global.statColumns) do
+		if col.visible then
+			total = total + col.width
+		end
+	end
+	return total
+end
+
+function MPT:SwapStatColumns(i, j)
+	local cols = self.db.global.statColumns
+	if i >= 1 and i <= #cols and j >= 1 and j <= #cols then
+		cols[i], cols[j] = cols[j], cols[i]
+	end
+end
+
+-- ── MVP functions ───────────────────────────────────────────────
 
 function MPT:AddMvp(nameRealm, addedBy, class, note)
 	nameRealm = self:NormalizeNameRealm(nameRealm)

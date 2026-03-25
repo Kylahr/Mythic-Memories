@@ -1,369 +1,427 @@
 local _, MPT = ...
 
-local PARTY_UNITS = { "player", "party1", "party2", "party3", "party4" }
+-- ── DataTracker ─────────────────────────────────────────────────
+-- Collects per-player stats from C_DamageMeter and run metadata
+-- from C_ChallengeMode at M+ run end. Builds a full run record
+-- and saves it via AddRun.
+--
+-- Per-player stats are only available for completed/reset runs
+-- (C_DamageMeter data is wiped on zone-out). Abandoned runs get
+-- totalDeaths from a cached C_ChallengeMode.GetDeathCount().
+
+local GRACE_PERIOD = 15
+local COLLECT_DELAY = 1.0
+
+local STAT_TYPES = {
+	{ key = "damage",    dpsKey = "dps", enum = Enum.DamageMeterType.DamageDone,          mergePets = true },
+	{ key = "healing",   dpsKey = "hps", enum = Enum.DamageMeterType.HealingDone,         mergePets = true },
+	{ key = "damageTaken",               enum = Enum.DamageMeterType.DamageTaken,          mergePets = false },
+	{ key = "avoidable",                 enum = Enum.DamageMeterType.AvoidableDamageTaken, mergePets = false },
+	{ key = "deaths",                    enum = Enum.DamageMeterType.Deaths,               mergePets = false },
+	{ key = "interrupts",               enum = Enum.DamageMeterType.Interrupts,            mergePets = false },
+	{ key = "dispels",                   enum = Enum.DamageMeterType.Dispels,              mergePets = false },
+}
+
+-- ── Enable ──────────────────────────────────────────────────────
 
 function MPT:DataTracker_Enable()
-	self:RegisterEvent("CHALLENGE_MODE_START", "OnChallengeModeStart")
-	self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnChallengeModeCompleted")
-	self:RegisterEvent("CHALLENGE_MODE_RESET", "OnChallengeModeReset")
-	self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
-	self.devMode = false
+	self:RegisterEvent("CHALLENGE_MODE_START", "DT_OnStart")
+	self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "DT_OnCompleted")
+	self:RegisterEvent("CHALLENGE_MODE_RESET", "DT_OnReset")
+	self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "DT_OnZoneChanged")
+	self:RegisterEvent("PLAYER_ENTERING_WORLD", "DT_OnZoneChanged")
 end
 
-function MPT:SnapshotParty()
-	local tanks, healers, dps = {}, {}, {}
-	for _, unit in ipairs(PARTY_UNITS) do
+-- ── GUID helpers ────────────────────────────────────────────────
+
+local function isPetGUID(guid)
+	return guid and (guid:match("^Pet%-") or guid:match("^Creature%-"))
+end
+
+-- ── Member snapshot ─────────────────────────────────────────────
+
+function MPT:DT_SnapshotMembers()
+	local members = {}
+	local units = { "player", "party1", "party2", "party3", "party4" }
+	for _, unit in ipairs(units) do
 		if UnitExists(unit) then
 			local name, realm = UnitName(unit)
+			realm = realm and realm ~= "" and realm or GetNormalizedRealmName()
 			local _, classFilename = UnitClass(unit)
 			local role = UnitGroupRolesAssigned(unit)
 			local guid = UnitGUID(unit)
-			if not realm or realm == "" then
-				realm = GetRealmName()
-			end
-			local member = {
+			members[#members + 1] = {
 				name = name,
 				realm = realm,
 				class = classFilename,
-				role = role or "DAMAGER",
+				role = role,
 				guid = guid,
 			}
-			if role == "TANK" then tanks[#tanks + 1] = member
-			elseif role == "HEALER" then healers[#healers + 1] = member
-			else dps[#dps + 1] = member end
 		end
 	end
-	local members = {}
-	for _, m in ipairs(tanks) do members[#members + 1] = m end
-	for _, m in ipairs(healers) do members[#members + 1] = m end
-	for _, m in ipairs(dps) do members[#members + 1] = m end
 	return members
 end
 
-function MPT:OnChallengeModeStart()
-	local mapID = C_ChallengeMode.GetActiveChallengeMapID()
+-- ── Run metadata ────────────────────────────────────────────────
+
+function MPT:DT_CaptureStartMetadata()
 	local level, affixIDs = C_ChallengeMode.GetActiveKeystoneInfo()
-	local dungeonName = C_ChallengeMode.GetMapUIInfo(mapID)
+	local mapID = C_ChallengeMode.GetActiveChallengeMapID()
+	local dungeonName = mapID and C_ChallengeMode.GetMapUIInfo(mapID) or "Unknown"
 
 	local affixNames = {}
 	for _, id in ipairs(affixIDs or {}) do
 		local name = C_ChallengeMode.GetAffixInfo(id)
 		if name then
-			table.insert(affixNames, name)
+			affixNames[#affixNames + 1] = name
 		end
 	end
 
-	self.activeRun = {
-		mapID = mapID,
+	return {
 		level = level,
+		mapID = mapID,
+		dungeon = dungeonName,
 		affixIDs = affixIDs or {},
 		affix = table.concat(affixNames, ", "),
-		dungeon = dungeonName or "Unknown",
-		members = self:SnapshotParty(),
-		startTime = GetTime(),
 	}
-	self.interruptCounts = {}
-
-	self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCLEU")
-	self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "OnZoneChanged")
 end
 
-function MPT:OnCLEU()
-	local info = { CombatLogGetCurrentEventInfo() }
-	local subEvent = info[2]
-	local sourceGUID = info[4]
+-- ── Live death cache ────────────────────────────────────────────
 
-	if subEvent == "SPELL_INTERRUPT" and sourceGUID then
-		-- Merge pet interrupts to owner
-		local resolvedGUID = sourceGUID
-		if not sourceGUID:match("^Player%-") then
-			-- Check if this is a party member's pet
-				for _, unit in ipairs(PARTY_UNITS) do
-				local petGUID = UnitGUID(unit .. "pet")
-				if petGUID and petGUID == sourceGUID then
-					resolvedGUID = UnitGUID(unit)
-					break
-				end
-			end
-			-- If still not a player GUID, skip it (unknown NPC/creature)
-			if not resolvedGUID:match("^Player%-") then return end
-		end
-		self.interruptCounts[resolvedGUID] = (self.interruptCounts[resolvedGUID] or 0) + 1
-	end
-end
-
-function MPT:OnZoneChanged()
+function MPT:DT_SnapshotDeaths()
 	if not self.activeRun then return end
-
-	if not C_ChallengeMode.IsChallengeModeActive() or not C_ChallengeMode.GetActiveChallengeMapID() then
-		self:SaveFailedRun()
+	local deaths = select(1, C_ChallengeMode.GetDeathCount())
+	if deaths and deaths > 0 then
+		self.activeRun.cachedDeathCount = deaths
 	end
 end
 
-function MPT:CountDeaths(dmStats)
-	local total = 0
-	for _, dm in pairs(dmStats) do
-		total = total + (dm.deaths or 0)
-	end
-	return total
-end
+-- ── Pet cache ───────────────────────────────────────────────────
 
-function MPT:CollectDamageMeterStats()
-	local stats = {}
-	if not C_DamageMeter or not C_DamageMeter.GetCombatSessionFromType then
-		return stats
+function MPT:DT_RefreshPetCache()
+	self.petToOwner = self.petToOwner or {}
+	wipe(self.petToOwner)
+	local playerPetGUID = UnitGUID("pet")
+	if playerPetGUID then
+		self.petToOwner[playerPetGUID] = UnitGUID("player")
 	end
-
-	-- Build pet-to-owner mapping so pet stats merge into the player
-	local petOwnerMap = {}
-	for _, unit in ipairs(PARTY_UNITS) do
-		local ownerGUID = UnitGUID(unit)
-		if ownerGUID then
-			local petGUID = UnitGUID(unit .. "pet")
-			if petGUID then
-				petOwnerMap[petGUID] = ownerGUID
-			end
+	for i = 1, 4 do
+		local petGUID = UnitGUID("party" .. i .. "pet")
+		local ownerGUID = UnitGUID("party" .. i)
+		if petGUID and ownerGUID then
+			self.petToOwner[petGUID] = ownerGUID
 		end
 	end
+end
 
-	local sessionTypes = {
-		{ field = "damage", dpsField = "dps", type = 0 },
-		{ field = "damageTaken", type = 1 },
-		{ field = "healing", hpsField = "hps", type = 2 },
-		{ field = "interrupts", type = 5 },
-		{ field = "deaths", type = 9 },
-	}
+function MPT:DT_ResolveOwner(sourceGUID)
+	if not isPetGUID(sourceGUID) then
+		return sourceGUID
+	end
+	return self.petToOwner and self.petToOwner[sourceGUID] or nil
+end
 
-	for _, st in ipairs(sessionTypes) do
-		local ok, session = pcall(C_DamageMeter.GetCombatSessionFromType, 0, st.type)
-		if ok and session and session.combatSources then
-			for _, source in ipairs(session.combatSources) do
-				local guid = source.sourceGUID
-				if guid and guid ~= "" then
-					-- Redirect pet GUID to owner, skip non-player/non-pet GUIDs
-					local resolvedGUID = petOwnerMap[guid] or guid
-					if not resolvedGUID:match("^Player%-") then
-						resolvedGUID = nil -- skip creatures/NPCs that aren't mapped pets
+-- ── Stat collection (fresh query from C_DamageMeter) ────────────
+
+function MPT:DT_CollectAllStats(members)
+	local available = C_DamageMeter.IsDamageMeterAvailable()
+	if not available then return nil end
+
+	local stats = {}
+	for _, m in ipairs(members) do
+		stats[m.guid] = {
+			name = m.name,
+			class = m.class,
+			role = m.role,
+			damage = 0, dps = 0,
+			healing = 0, hps = 0,
+			damageTaken = 0, avoidable = 0,
+			deaths = 0, interrupts = 0, dispels = 0,
+		}
+	end
+
+	-- Build member GUID lookup
+	local memberGUIDs = {}
+	for _, m in ipairs(members) do
+		memberGUIDs[m.guid] = true
+	end
+
+	for _, def in ipairs(STAT_TYPES) do
+		local session = C_DamageMeter.GetCombatSessionFromType(
+			Enum.DamageMeterSessionType.Overall,
+			def.enum
+		)
+		if session and session.combatSources then
+			-- Sum per owner (handles pet merging)
+			-- Deaths: each source entry = one death event, count entries per GUID
+			local isDeaths = (def.key == "deaths")
+			local totals = {}
+			local dpsVals = {}
+			for _, src in ipairs(session.combatSources) do
+				local ownerGUID = src.sourceGUID
+				if def.mergePets and isPetGUID(ownerGUID) then
+					ownerGUID = self:DT_ResolveOwner(ownerGUID)
+				end
+				if ownerGUID and memberGUIDs[ownerGUID] then
+					if isDeaths then
+						totals[ownerGUID] = (totals[ownerGUID] or 0) + 1
+					else
+						totals[ownerGUID] = (totals[ownerGUID] or 0) + (src.totalAmount or 0)
 					end
-
-					if resolvedGUID then
-						if not stats[resolvedGUID] then
-							stats[resolvedGUID] = { damage = 0, dps = 0, healing = 0, hps = 0, damageTaken = 0, deaths = 0, interrupts = 0 }
-						end
-						local amt = source.totalAmount or 0
-						-- For merged pet stats, add to existing values
-						stats[resolvedGUID][st.field] = (stats[resolvedGUID][st.field] or 0) + amt
-						local aps = source.amountPerSecond or 0
-						if st.dpsField then
-							stats[resolvedGUID][st.dpsField] = (stats[resolvedGUID][st.dpsField] or 0) + aps
-						end
-						if st.hpsField then
-							stats[resolvedGUID][st.hpsField] = (stats[resolvedGUID][st.hpsField] or 0) + aps
-						end
-						if st.field == "deaths" then
-							local dts = source.deathTimeSeconds or 0
-							if dts and dts > 0 then
-								stats[resolvedGUID].deaths = (stats[resolvedGUID].deaths or 0) + 1
-							end
-						end
+					if def.dpsKey and src.amountPerSecond and not isPetGUID(src.sourceGUID) then
+						dpsVals[ownerGUID] = src.amountPerSecond
+					end
+				end
+			end
+			for guid, total in pairs(totals) do
+				if stats[guid] then
+					stats[guid][def.key] = total
+				end
+			end
+			if def.dpsKey then
+				for guid, dps in pairs(dpsVals) do
+					if stats[guid] then
+						stats[guid][def.dpsKey] = dps
 					end
 				end
 			end
 		end
 	end
+
 	return stats
 end
 
-function MPT:BuildPlayerStats(members, dmStats)
-	local playerStats = {}
-	for _, member in ipairs(members) do
-		local guid = member.guid
-		local dm = dmStats[guid] or {}
-		playerStats[guid] = {
-			name = member.name,
-			class = member.class,
-			role = member.role,
-			damage = dm.damage or 0,
-			dps = dm.dps or 0,
-			healing = dm.healing or 0,
-			hps = dm.hps or 0,
-			damageTaken = dm.damageTaken or 0,
-			deaths = dm.deaths or 0,
-			interrupts = dm.interrupts or self.interruptCounts[guid] or 0,
-		}
-	end
-	return playerStats
-end
+-- ── Build run records ───────────────────────────────────────────
 
-function MPT:OnChallengeModeCompleted()
-	if not self.activeRun then return end
+function MPT:DT_BuildRunRecord(completionInfo)
+	local run = self.activeRun
+	if not run then return nil end
 
-	local info = C_ChallengeMode.GetChallengeCompletionInfo()
-	if not info then
-		self:CleanupActiveRun()
-		return
-	end
+	local ts = time()
+	local playerStats = self:DT_CollectAllStats(run.members)
 
-	local deathCount = 0
-	if C_ChallengeMode.GetDeathCount then
-		deathCount = C_ChallengeMode.GetDeathCount() or 0
-	end
-
-	local dmStats = self:CollectDamageMeterStats()
-	local members = self.activeRun.members
-
-	local runData = {
-		date = self:FormatDate(),
-		timestamp = time(),
-		dungeon = self.activeRun.dungeon,
-		mapID = self.activeRun.mapID,
-		level = info.level or self.activeRun.level,
-		timeStr = self:FormatTime(info.time or 0),
-		timeMs = info.time or 0,
-		affix = self.activeRun.affix,
-		affixIDs = self.activeRun.affixIDs,
-		bonus = info.keystoneUpgradeLevels or 0,
-		onTime = info.onTime ~= false,
-		members = members,
-		link = "",
-		description = "",
-		playerStats = self:BuildPlayerStats(members, dmStats),
-		totalDeaths = deathCount,
-	}
-
-	self:AddRun(runData)
-	self:CleanupActiveRun()
-end
-
-function MPT:OnChallengeModeReset()
-	if not self.activeRun then return end
-	self:SaveFailedRun()
-end
-
-function MPT:SaveFailedRun()
-	if not self.activeRun then return end
-
-	local elapsed = (GetTime() - self.activeRun.startTime) * 1000
-	local dmStats = self:CollectDamageMeterStats()
-
-	local runData = {
-		date = self:FormatDate(),
-		timestamp = time(),
-		dungeon = self.activeRun.dungeon,
-		mapID = self.activeRun.mapID,
-		level = self.activeRun.level,
-		timeStr = self:FormatTime(elapsed),
-		timeMs = elapsed,
-		affix = self.activeRun.affix,
-		affixIDs = self.activeRun.affixIDs,
-		bonus = 0,
-		onTime = false,
-		members = self.activeRun.members,
-		link = "",
-		description = "",
-		playerStats = self:BuildPlayerStats(self.activeRun.members, dmStats),
-		totalDeaths = self:CountDeaths(dmStats),
-	}
-
-	self:AddRun(runData)
-	self:CleanupActiveRun()
-end
-
-function MPT:CleanupActiveRun()
-	self.activeRun = nil
-	self.interruptCounts = {}
-	self:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-	self:UnregisterEvent("ZONE_CHANGED_NEW_AREA")
-end
-
--- ── Dev Mode (heroic/normal dungeon testing) ─────────────────
-
-function MPT:ToggleDevMode()
-	self.devMode = not self.devMode
-	if self.devMode then
-		self:Print("Dev mode ENABLED — enter any dungeon to start tracking. Use /mm endrun to save.")
-	else
-		self:Print("Dev mode DISABLED.")
-		if self.activeRun and self.activeRun.isDev then
-			self:CleanupActiveRun()
+	local totalDeaths = 0
+	if playerStats then
+		for _, ps in pairs(playerStats) do
+			totalDeaths = totalDeaths + (ps.deaths or 0)
 		end
 	end
-end
 
-function MPT:OnPlayerEnteringWorld()
-	if not self.devMode then return end
-	if self.activeRun then return end
-
-	local name, instanceType, difficultyID, difficultyName = GetInstanceInfo()
-	if instanceType ~= "party" then return end
-
-	-- Skip M+ (difficultyID 8) — that's handled by CHALLENGE_MODE_START
-	if difficultyID == 8 then return end
-
-	self.activeRun = {
-		isDev = true,
-		dungeon = name or "Unknown",
-		mapID = 0,
-		level = 0,
-		affixIDs = {},
-		affix = difficultyName or "",
-		members = self:SnapshotParty(),
-		startTime = GetTime(),
+	return {
+		id = ts,
+		date = self:FormatDate(ts),
+		timestamp = ts,
+		dungeon = run.dungeon or "Unknown",
+		mapID = run.mapID or 0,
+		level = run.level or 0,
+		timeMs = completionInfo and completionInfo.time or 0,
+		timeStr = self:FormatTime(completionInfo and completionInfo.time or 0),
+		affix = run.affix or "",
+		affixIDs = run.affixIDs or {},
+		bonus = completionInfo and completionInfo.keystoneUpgradeLevels or 0,
+		onTime = completionInfo and completionInfo.onTime or false,
+		members = run.members,
+		playerStats = playerStats,
+		totalDeaths = totalDeaths,
+		link = "",
+		description = "",
 	}
-	self.interruptCounts = {}
-
-	self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCLEU")
-	self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "OnDevZoneChanged")
-
-	self:Print("Dev: tracking started in " .. (name or "Unknown") .. " (" .. (difficultyName or "Unknown") .. ")")
 end
 
-function MPT:OnDevZoneChanged()
-	if not self.activeRun or not self.activeRun.isDev then return end
+function MPT:DT_BuildFailedRecord()
+	local run = self.activeRun
+	if not run then return nil end
 
-	local _, instanceType = GetInstanceInfo()
-	if instanceType ~= "party" then
-		self:Print("Dev: left dungeon — saving run.")
-		self:EndDevRun()
+	local ts = time()
+	local playerStats = self:DT_CollectAllStats(run.members)
+
+	-- For abandoned runs, per-player stats are unavailable (Blizzard wipes
+	-- C_DamageMeter on zone-out). Set per-player deaths to nil so the UI
+	-- can distinguish "no data" from "0 deaths". totalDeaths uses the
+	-- cached value from C_ChallengeMode.GetDeathCount().
+	local hasData = false
+	if playerStats then
+		for _, ps in pairs(playerStats) do
+			if ps.damage > 0 or ps.healing > 0 or ps.deaths > 0 or ps.interrupts > 0 then
+				hasData = true
+				break
+			end
+		end
+		if not hasData then
+			for _, ps in pairs(playerStats) do
+				ps.deaths = nil
+			end
+		end
+	end
+
+	local totalDeaths = run.cachedDeathCount or 0
+
+	return {
+		id = ts,
+		date = self:FormatDate(ts),
+		timestamp = ts,
+		dungeon = run.dungeon or "Unknown",
+		mapID = run.mapID or 0,
+		level = run.level or 0,
+		timeMs = math.floor((GetTime() - (run.startTime or GetTime())) * 1000),
+		timeStr = self:FormatTime(math.floor((GetTime() - (run.startTime or GetTime())) * 1000)),
+		affix = run.affix or "",
+		affixIDs = run.affixIDs or {},
+		bonus = 0,
+		onTime = false,
+		members = run.members,
+		playerStats = playerStats,
+		totalDeaths = totalDeaths,
+		link = "",
+		description = "",
+	}
+end
+
+-- ── Cleanup ─────────────────────────────────────────────────────
+
+function MPT:DT_CleanupActiveRun()
+	if self.zoneLeaveTimer then
+		self.zoneLeaveTimer:Cancel()
+		self.zoneLeaveTimer = nil
+	end
+	if self.collectTimer then
+		self.collectTimer:Cancel()
+		self.collectTimer = nil
+	end
+	self.completionPending = nil
+	self._regenCollectFn = nil
+	self.activeRun = nil
+end
+
+-- ── Delayed collection ──────────────────────────────────────────
+
+function MPT:DT_ScheduleCompletedCollection(completionInfo)
+	if not self.activeRun then return end
+
+	local function doCollect()
+		if not self.activeRun then return end
+		local record = self:DT_BuildRunRecord(completionInfo)
+		if record then
+			self:AddRun(record)
+			local status = record.onTime and "timed" or "depleted"
+			self:Print("Run saved — " .. record.dungeon .. " +" .. record.level .. " (" .. status .. ")")
+		end
+		self:DT_CleanupActiveRun()
+	end
+
+	if InCombatLockdown() then
+		self._regenCollectFn = doCollect
+	else
+		self.collectTimer = C_Timer.After(COLLECT_DELAY, doCollect)
 	end
 end
 
-function MPT:EndDevRun()
-	if not self.activeRun then
-		self:Print("Dev: no active run to save.")
+function MPT:DT_ScheduleFailedCollection()
+	if not self.activeRun then return end
+
+	local function doCollect()
+		if not self.activeRun then return end
+		local record = self:DT_BuildFailedRecord()
+		if record then
+			self:AddRun(record)
+			self:Print("Run saved — " .. record.dungeon .. " +" .. record.level .. " (depleted)")
+		end
+		self:DT_CleanupActiveRun()
+	end
+
+	if InCombatLockdown() then
+		self._regenCollectFn = doCollect
+	else
+		self.collectTimer = C_Timer.After(COLLECT_DELAY, doCollect)
+	end
+end
+
+-- ── Event Handlers ──────────────────────────────────────────────
+
+function MPT:DT_OnStart()
+	if self.zoneLeaveTimer then
+		self.zoneLeaveTimer:Cancel()
+		self.zoneLeaveTimer = nil
+	end
+	if self.collectTimer then
+		self.collectTimer:Cancel()
+		self.collectTimer = nil
+	end
+	self.completionPending = nil
+
+	local _, _, _, _, _, _, _, instanceMapID = GetInstanceInfo()
+	local meta = self:DT_CaptureStartMetadata()
+
+	self.activeRun = {
+		members = self:DT_SnapshotMembers(),
+		startTime = GetTime(),
+		instanceMapID = instanceMapID,
+		level = meta.level,
+		mapID = meta.mapID,
+		dungeon = meta.dungeon,
+		affixIDs = meta.affixIDs,
+		affix = meta.affix,
+	}
+
+	self:DT_RefreshPetCache()
+	self:RegisterEvent("UNIT_PET", "DT_OnUnitPet")
+	self:RegisterEvent("PLAYER_DEAD", "DT_SnapshotDeaths")
+	self:RegisterEvent("PLAYER_REGEN_ENABLED", "DT_OnRegenDuringRun")
+end
+
+function MPT:DT_OnRegenDuringRun()
+	-- Cache death count after each pull
+	self:DT_SnapshotDeaths()
+	-- If a run end is pending collection, fire it now
+	if self._regenCollectFn then
+		local fn = self._regenCollectFn
+		self._regenCollectFn = nil
+		self.collectTimer = C_Timer.After(COLLECT_DELAY, fn)
+	end
+end
+
+function MPT:DT_OnUnitPet()
+	if self.activeRun then
+		self:DT_RefreshPetCache()
+	end
+end
+
+function MPT:DT_OnCompleted()
+	if not self.activeRun then return end
+	self.completionPending = true
+	local completionInfo = C_ChallengeMode.GetChallengeCompletionInfo()
+	self:DT_ScheduleCompletedCollection(completionInfo)
+end
+
+function MPT:DT_OnReset()
+	if not self.activeRun then return end
+	self:DT_ScheduleFailedCollection()
+end
+
+function MPT:DT_OnZoneChanged(event)
+	if not self.activeRun then return end
+	if self.completionPending then return end
+
+	local _, _, _, _, _, _, _, instanceMapID = GetInstanceInfo()
+
+	if instanceMapID == self.activeRun.instanceMapID then
+		if self.zoneLeaveTimer then
+			self.zoneLeaveTimer:Cancel()
+			self.zoneLeaveTimer = nil
+		end
 		return
 	end
 
-	local elapsed = (GetTime() - self.activeRun.startTime) * 1000
-	local dmStats = self:CollectDamageMeterStats()
-	local members = self.activeRun.members
-
-	local totalDeaths = self:CountDeaths(dmStats)
-
-	local runData = {
-		date = self:FormatDate(),
-		timestamp = time(),
-		dungeon = self.activeRun.dungeon,
-		mapID = self.activeRun.mapID,
-		level = self.activeRun.level,
-		timeStr = self:FormatTime(elapsed),
-		timeMs = elapsed,
-		affix = self.activeRun.affix,
-		affixIDs = self.activeRun.affixIDs,
-		bonus = 0,
-		onTime = true,
-		members = members,
-		link = "",
-		description = "",
-		playerStats = self:BuildPlayerStats(members, dmStats),
-		totalDeaths = totalDeaths,
-	}
-
-	self:AddRun(runData)
-	self:CleanupActiveRun()
-	self:Print("Dev: run saved — " .. runData.dungeon .. " (" .. runData.timeStr .. ")")
-
-	if self.mainFrame and self.mainFrame:IsShown() then
-		self:RefreshTable()
+	if not self.zoneLeaveTimer then
+		self.zoneLeaveTimer = C_Timer.After(GRACE_PERIOD, function()
+			if not self.activeRun then return end
+			local record = self:DT_BuildFailedRecord()
+			if record then
+				record.abandoned = true
+				self:AddRun(record)
+				self:Print("Run saved — " .. record.dungeon .. " +" .. record.level .. " (abandoned)")
+			end
+			self:DT_CleanupActiveRun()
+		end)
 	end
 end
