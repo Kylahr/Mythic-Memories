@@ -543,9 +543,12 @@ function MPT:ExpandRow(row)
 	end
 
 	-- Position death/interrupt totals under their respective stat columns
+	-- Sum from playerStats (more reliable than run.totalDeaths which uses C_ChallengeMode.GetDeathCount)
+	local totalDeaths = 0
 	local totalInterrupts = 0
 	if run.playerStats then
 		for _, ps in pairs(run.playerStats) do
+			totalDeaths = totalDeaths + (ps.deaths or 0)
 			totalInterrupts = totalInterrupts + (ps.interrupts or 0)
 		end
 	end
@@ -559,7 +562,7 @@ function MPT:ExpandRow(row)
 			detail.actionBar.deathText:SetPoint("LEFT", detail.actionBar, "LEFT", abXOff, 0)
 			detail.actionBar.deathText:SetWidth(col.width)
 			detail.actionBar.deathText:SetJustifyH("LEFT")
-			detail.actionBar.deathText:SetText(tostring(run.totalDeaths or 0))
+			detail.actionBar.deathText:SetText(tostring(totalDeaths))
 			detail.actionBar.deathText:SetTextColor(dc.textMuted[1], dc.textMuted[2], dc.textMuted[3])
 			detail.actionBar.deathText:Show()
 		elseif col.key == "interrupts" then
