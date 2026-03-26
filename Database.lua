@@ -427,13 +427,14 @@ function MPT:CollectFilterValues()
 			dungeonSet[run.dungeon] = true
 			dungeons[#dungeons + 1] = run.dungeon
 		end
-		-- Unique individual affixes (split comma-separated)
+		-- Unique individual affixes (split comma-separated, format for display)
 		if run.affix and run.affix ~= "" then
 			for affix in run.affix:gmatch("[^,]+") do
 				affix = affix:match("^%s*(.-)%s*$")  -- trim whitespace
-				if affix ~= "" and not affixSet[affix] then
-					affixSet[affix] = true
-					affixes[#affixes + 1] = affix
+				local display = self:FormatAffixForFilter(affix)
+				if display and display ~= "" and not affixSet[display] then
+					affixSet[display] = true
+					affixes[#affixes + 1] = display
 				end
 			end
 		end

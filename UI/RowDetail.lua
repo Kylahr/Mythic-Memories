@@ -457,7 +457,7 @@ function MPT:ExpandRow(row)
 		end
 
 		-- Stat cells (dynamic, based on visible stat columns)
-		xOff = DETAIL_PADDING + CLASS_BAR_WIDTH + 3 + FIXED_NAME_WIDTH + FIXED_ROLE_WIDTH
+		xOff = DETAIL_PADDING + CLASS_BAR_WIDTH + 6 + FIXED_NAME_WIDTH + FIXED_ROLE_WIDTH
 		for _, col in ipairs(visibleStats) do
 			cellIdx = cellIdx + 1
 			local cell = detail.cells[cellIdx]
@@ -525,23 +525,54 @@ function MPT:ExpandRow(row)
 		actionBar:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -DETAIL_PADDING, DETAIL_PADDING)
 		actionBar:SetHeight(ACTION_BAR_HEIGHT)
 
-		local deathText = actionBar:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
-		deathText:SetPoint("LEFT", actionBar, "LEFT", 0, 0)
-		actionBar.deathText = deathText
-
 		local editLinkBtn = self:CreateModernButton(actionBar, 70, 20, "Edit Link")
-		editLinkBtn:SetPoint("LEFT", deathText, "RIGHT", 20, 0)
+		editLinkBtn:SetPoint("LEFT", actionBar, "LEFT", 0, 0)
 		actionBar.editLinkBtn = editLinkBtn
 
 		local editDescBtn = self:CreateModernButton(actionBar, 80, 20, "Edit Desc")
 		editDescBtn:SetPoint("LEFT", editLinkBtn, "RIGHT", 8, 0)
 		actionBar.editDescBtn = editDescBtn
 
+		local deathText = actionBar:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		actionBar.deathText = deathText
+
+		local intText = actionBar:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
+		actionBar.intText = intText
+
 		detail.actionBar = actionBar
 	end
 
-	detail.actionBar.deathText:SetText("Deaths: " .. (run.totalDeaths or 0))
-	detail.actionBar.deathText:SetTextColor(dc.textMuted[1], dc.textMuted[2], dc.textMuted[3])
+	-- Position death/interrupt totals under their respective stat columns
+	local totalInterrupts = 0
+	if run.playerStats then
+		for _, ps in pairs(run.playerStats) do
+			totalInterrupts = totalInterrupts + (ps.interrupts or 0)
+		end
+	end
+
+	local abXOff = FIXED_NAME_WIDTH + FIXED_ROLE_WIDTH
+	detail.actionBar.deathText:Hide()
+	detail.actionBar.intText:Hide()
+	for _, col in ipairs(visibleStats) do
+		if col.key == "deaths" then
+			detail.actionBar.deathText:ClearAllPoints()
+			detail.actionBar.deathText:SetPoint("LEFT", detail.actionBar, "LEFT", abXOff, 0)
+			detail.actionBar.deathText:SetWidth(col.width)
+			detail.actionBar.deathText:SetJustifyH("LEFT")
+			detail.actionBar.deathText:SetText(tostring(run.totalDeaths or 0))
+			detail.actionBar.deathText:SetTextColor(dc.textMuted[1], dc.textMuted[2], dc.textMuted[3])
+			detail.actionBar.deathText:Show()
+		elseif col.key == "interrupts" then
+			detail.actionBar.intText:ClearAllPoints()
+			detail.actionBar.intText:SetPoint("LEFT", detail.actionBar, "LEFT", abXOff, 0)
+			detail.actionBar.intText:SetWidth(col.width)
+			detail.actionBar.intText:SetJustifyH("LEFT")
+			detail.actionBar.intText:SetText(tostring(totalInterrupts))
+			detail.actionBar.intText:SetTextColor(dc.textMuted[1], dc.textMuted[2], dc.textMuted[3])
+			detail.actionBar.intText:Show()
+		end
+		abXOff = abXOff + col.width
+	end
 
 	if self:IsViewingRemote() then
 		if run.link and run.link ~= "" then

@@ -1577,7 +1577,7 @@ function MPT:PopulateRow(row, run)
 		run.dungeon or "",
 		tostring(run.level or ""),
 		run.timeStr or "",
-		run.affix or "",
+		self:FormatAffixDisplay(run.affix),
 		bonusText,
 		roleText,
 		"",  -- MVP column uses star icon, not text

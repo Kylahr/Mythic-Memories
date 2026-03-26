@@ -12,6 +12,50 @@ local _, MPT = ...
 local GRACE_PERIOD = 15
 local COLLECT_DELAY = 1.0
 
+-- ── Affix display formatting ──────────────────────────────────
+-- Storage keeps raw affix names; these tables drive display only.
+
+local AFFIX_SKIP = {
+	["Lindormi's Guidance"] = true,
+}
+
+local AFFIX_ABBREV = {
+	["Tyrannical"] = "T",
+	["Fortified"]  = "F",
+}
+
+local XALATATH_PREFIX = "Xal'atath's Bargain: "
+
+local function FormatSingleAffix(name)
+	if AFFIX_SKIP[name] then return nil end
+	if AFFIX_ABBREV[name] then return AFFIX_ABBREV[name] end
+	if name:sub(1, #XALATATH_PREFIX) == XALATATH_PREFIX then
+		return name:sub(#XALATATH_PREFIX + 1)
+	end
+	return name
+end
+
+function MPT:FormatAffixDisplay(affixStr)
+	if not affixStr or affixStr == "" then return "" end
+	local parts = {}
+	for affix in affixStr:gmatch("[^,]+") do
+		affix = affix:match("^%s*(.-)%s*$")
+		local formatted = FormatSingleAffix(affix)
+		if formatted then
+			parts[#parts + 1] = formatted
+		end
+	end
+	return table.concat(parts, " \194\183 ")  -- " · " (UTF-8 middle dot)
+end
+
+function MPT:FormatAffixForFilter(name)
+	if AFFIX_SKIP[name] then return nil end
+	if name:sub(1, #XALATATH_PREFIX) == XALATATH_PREFIX then
+		return name:sub(#XALATATH_PREFIX + 1)
+	end
+	return name
+end
+
 local STAT_TYPES = {
 	{ key = "damage",    dpsKey = "dps", enum = Enum.DamageMeterType.DamageDone,          mergePets = true },
 	{ key = "healing",   dpsKey = "hps", enum = Enum.DamageMeterType.HealingDone,         mergePets = true },
@@ -70,10 +114,12 @@ function MPT:DT_CaptureStartMetadata()
 	local dungeonName = mapID and C_ChallengeMode.GetMapUIInfo(mapID) or "Unknown"
 
 	local affixNames = {}
+	local filteredIDs = {}
 	for _, id in ipairs(affixIDs or {}) do
 		local name = C_ChallengeMode.GetAffixInfo(id)
-		if name then
+		if name and not AFFIX_SKIP[name] then
 			affixNames[#affixNames + 1] = name
+			filteredIDs[#filteredIDs + 1] = id
 		end
 	end
 
@@ -81,7 +127,7 @@ function MPT:DT_CaptureStartMetadata()
 		level = level,
 		mapID = mapID,
 		dungeon = dungeonName,
-		affixIDs = affixIDs or {},
+		affixIDs = filteredIDs,
 		affix = table.concat(affixNames, ", "),
 	}
 end
