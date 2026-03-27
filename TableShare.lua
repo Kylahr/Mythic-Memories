@@ -243,16 +243,19 @@ function MPT:OnTableRequest(sender, data, distribution)
 	-- Find the requested table (default to active if no name specified)
 	local requestedName = data and data.tableName or nil
 	local runs
+	local resolvedName
 	if requestedName then
 		for _, tbl in ipairs(self.db.global.tables or {}) do
 			if tbl.name == requestedName then
 				runs = tbl.runs
+				resolvedName = tbl.name
 				break
 			end
 		end
 	end
 	if not runs then
 		runs = self:GetActiveRuns()
+		resolvedName = self:GetActiveTable().name
 	end
 
 	local packed = {}
@@ -272,7 +275,7 @@ function MPT:OnTableRequest(sender, data, distribution)
 	end
 
 	local _, myClass = UnitClass("player")
-	local payload = { r = packed, v = mvps, sc = myClass, _target = sender }
+	local payload = { r = packed, v = mvps, sc = myClass, tn = resolvedName, _target = sender }
 
 	local serialized = self:Serialize("TABLE_RESP", payload)
 
@@ -417,7 +420,7 @@ function MPT:OnTableResponse(sender, data)
 		end
 	end
 
-	self:EnterViewMode(sender, { runs = runs, mvps = mvps, senderClass = data.sc })
+	self:EnterViewMode(sender, { runs = runs, mvps = mvps, senderClass = data.sc, tableName = data.tn })
 
 	-- Update sync cache with authoritative data
 	self.syncCache[sender] = {
@@ -502,6 +505,7 @@ function MPT:EnterViewMode(playerName, data)
 	end
 
 	self.viewingPlayer = playerName
+	self.viewingTableName = data.tableName
 	self.viewingData = {
 		runs = data.runs or {},
 		mvps = data.mvps or {},
@@ -516,12 +520,18 @@ function MPT:EnterViewMode(playerName, data)
 	self:RefreshTable()
 	self:RefreshMvpsSidePanel()
 
+	-- Update remote table dropdown with the actual table name
+	if self.remoteTableDD and self.viewingTableName then
+		self.remoteTableDD._text:SetText(self.viewingTableName)
+	end
+
 	self:Print("Viewing " .. playerName .. "'s M+ table (" .. #self.viewingData.runs .. " runs)")
 end
 
 function MPT:ExitViewMode()
 	self.viewingPlayer = nil
 	self.viewingClass = nil
+	self.viewingTableName = nil
 	self.viewingData = nil
 	self.remoteTableList = nil
 	self.remoteTableOwner = nil

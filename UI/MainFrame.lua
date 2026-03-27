@@ -3707,9 +3707,7 @@ end
 
 function MPT:UpdateRemoteTableDropdown()
 	if not self.remoteTableDD or not self.remoteTableList then return end
-	-- Rebuild dropdown items
 	self.remoteTableDD._items = self.remoteTableList
-	-- Update display to show first table name if current isn't set
 end
 
 function MPT:CreateRemoteTableDropdown()
@@ -3728,7 +3726,7 @@ function MPT:CreateRemoteTableDropdown()
 	ddText:SetPoint("LEFT", 8, 0)
 	ddText:SetPoint("RIGHT", -16, 0)
 	ddText:SetJustifyH("LEFT")
-	ddText:SetText("Select Table")
+	ddText:SetText("")
 	ddText:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
 	dd._text = ddText
 
@@ -3972,6 +3970,7 @@ function MPT:UpdateViewModeUI()
 		-- Show remote table dropdown
 		self:CreateRemoteTableDropdown()
 		if self.remoteTableDD then
+			self.remoteTableDD._text:SetText(self.viewingTableName or "")
 			self.remoteTableDD:Show()
 			if self.remoteTableList then
 				self:UpdateRemoteTableDropdown()
