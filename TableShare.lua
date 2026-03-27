@@ -195,9 +195,6 @@ function MPT:UnpackSharedRun(packed)
 			guid = guid,
 		}
 		playerStats[guid] = {
-			name = pm.n,
-			class = pm.c,
-			role = pm.rl,
 			damage = pm.dm or 0,
 			dps = pm.dp or 0,
 			healing = pm.hl or 0,
@@ -220,8 +217,8 @@ function MPT:UnpackSharedRun(packed)
 		totalDeaths = packed.td or 0,
 		members = members,
 		playerStats = playerStats,
-		link = packed.lk or "",
-		description = packed.dc or "",
+		link = packed.lk,
+		description = packed.dc,
 	}
 end
 

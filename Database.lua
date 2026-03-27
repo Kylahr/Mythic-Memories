@@ -541,6 +541,32 @@ function MPT:MigrateStatColumns()
 	end
 end
 
+function MPT:MigrateCleanupFields()
+	if self.db.global.cleanupV1 then return end
+	for _, tbl in ipairs(self.db.global.tables or {}) do
+		for _, run in ipairs(tbl.runs) do
+			run.timestamp = nil
+			run.mapID = nil
+			run.timeMs = nil
+			run.affixIDs = nil
+			run.abandoned = nil
+			if run.link == "" then run.link = nil end
+			if run.description == "" then run.description = nil end
+			if run.playerStats then
+				for _, ps in pairs(run.playerStats) do
+					ps.name = nil
+					ps.class = nil
+					ps.role = nil
+				end
+			end
+		end
+	end
+	for _, data in pairs(self.db.global.mvps or {}) do
+		data.addedDate = nil
+	end
+	self.db.global.cleanupV1 = true
+end
+
 function MPT:GetVisibleStatColumns()
 	local result = {}
 	for _, col in ipairs(self.db.global.statColumns) do
@@ -578,7 +604,6 @@ function MPT:AddMvp(nameRealm, addedBy, class, note)
 			truncNote = truncNote:sub(1, MAX_NOTE_LENGTH)
 		end
 		self.db.global.mvps[nameRealm] = {
-			addedDate = time(),
 			addedBy = addedBy or "Unknown",
 			class = class,
 			note = truncNote,

@@ -9,6 +9,7 @@ function MPT:OnInitialize()
 	self:MigrateTotalRuns()
 	self:MigrateCharActiveTable()
 	self:MigrateStatColumns()
+	self:MigrateCleanupFields()
 	self:LoadSampleRun()
 
 	self:RegisterChatCommand("mm", "SlashCommand")
@@ -57,14 +58,10 @@ function MPT:LoadSampleRun()
 	local sampleRun = {
 		id = ts,
 		date = self:FormatDate(ts),
-		timestamp = ts,
 		dungeon = "City of Threads",
-		mapID = 502,
 		level = 12,
 		timeStr = self:FormatTime(1845000),
-		timeMs = 1845000,
 		affix = "Tyrannical, Storming",
-		affixIDs = {},
 		bonus = 2,
 		onTime = true,
 		members = {
@@ -74,14 +71,13 @@ function MPT:LoadSampleRun()
 			{ name = "Blgrmrl",    realm = "Mrgllgrgl",   class = "ROGUE",       role = "DAMAGER", guid = "Player-1-301" },
 			{ name = "Glrmrgl",    realm = "Blrglmrg",    class = "EVOKER",      role = "DAMAGER", guid = "Player-1-302" },
 		},
-		link = "",
 		description = "Clean run, good coordination on last boss.",
 		playerStats = {
-			["Player-1-100"] = { name = "Mrglgrl",  class = "WARRIOR", role = "TANK",    damage = 920000,  dps = 498,  healing = 340000,  hps = 184,  damageTaken = 3200000, deaths = 0, interrupts = 18 },
-			["Player-1-200"] = { name = "Grllmrgl", class = "PRIEST",  role = "HEALER",  damage = 185000,  dps = 100,  healing = 1680000, hps = 910,  damageTaken = 520000,  deaths = 0, interrupts = 3 },
-			["Player-1-300"] = { name = "Mrgrlgl",  class = "MAGE",    role = "DAMAGER", damage = 2150000, dps = 1164, healing = 45000,   hps = 24,   damageTaken = 780000,  deaths = 1, interrupts = 12 },
-			["Player-1-301"] = { name = "Blgrmrl",  class = "ROGUE",   role = "DAMAGER", damage = 2310000, dps = 1251, healing = 32000,   hps = 17,   damageTaken = 690000,  deaths = 0, interrupts = 14 },
-			["Player-1-302"] = { name = "Glrmrgl",  class = "EVOKER",  role = "DAMAGER", damage = 1980000, dps = 1073, healing = 120000,  hps = 65,   damageTaken = 850000,  deaths = 1, interrupts = 9 },
+			["Player-1-100"] = { damage = 920000,  dps = 498,  healing = 340000,  hps = 184,  damageTaken = 3200000, deaths = 0, interrupts = 18 },
+			["Player-1-200"] = { damage = 185000,  dps = 100,  healing = 1680000, hps = 910,  damageTaken = 520000,  deaths = 0, interrupts = 3 },
+			["Player-1-300"] = { damage = 2150000, dps = 1164, healing = 45000,   hps = 24,   damageTaken = 780000,  deaths = 1, interrupts = 12 },
+			["Player-1-301"] = { damage = 2310000, dps = 1251, healing = 32000,   hps = 17,   damageTaken = 690000,  deaths = 0, interrupts = 14 },
+			["Player-1-302"] = { damage = 1980000, dps = 1073, healing = 120000,  hps = 65,   damageTaken = 850000,  deaths = 1, interrupts = 9 },
 		},
 		totalDeaths = 2,
 	}
@@ -326,9 +322,6 @@ function MPT:LoadMockData()
 			local baseHeal = m.role == "HEALER" and 1500000 or (m.role == "TANK" and 300000 or 50000)
 			local baseDmgTaken = m.role == "TANK" and 3000000 or (m.role == "HEALER" and 500000 or 800000)
 			playerStats[m.guid] = {
-				name = m.name,
-				class = m.class,
-				role = m.role,
 				damage = baseDmg + math.floor(idx * 50000),
 				dps = math.floor((baseDmg + idx * 50000) / (mr.timeMs / 1000)),
 				healing = baseHeal + math.floor(idx * 20000),
@@ -343,19 +336,15 @@ function MPT:LoadMockData()
 		local runData = {
 			id = ts,
 			date = self:FormatDate(ts),
-			timestamp = ts,
 			dungeon = d.name,
-			mapID = d.mapID,
 			level = mr.level,
 			timeStr = self:FormatTime(mr.timeMs),
-			timeMs = mr.timeMs,
 			affix = mr.affix,
-			affixIDs = {},
 			bonus = mr.bonus,
 			onTime = mr.onTime,
 			members = members,
-			link = (idx % 3 == 0) and "https://raider.io/example" or "",
-			description = (idx % 4 == 0) and "Good run, clean pulls" or "",
+			link = (idx % 3 == 0) and "https://raider.io/example" or nil,
+			description = (idx % 4 == 0) and "Good run, clean pulls" or nil,
 			mvps = {},
 			playerStats = playerStats,
 			totalDeaths = mr.deaths,

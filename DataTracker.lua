@@ -176,9 +176,6 @@ function MPT:DT_CollectAllStats(members)
 	local stats = {}
 	for _, m in ipairs(members) do
 		stats[m.guid] = {
-			name = m.name,
-			class = m.class,
-			role = m.role,
 			damage = 0, dps = 0,
 			healing = 0, hps = 0,
 			damageTaken = 0, avoidable = 0,
@@ -256,22 +253,16 @@ function MPT:DT_BuildRunRecord(completionInfo)
 	return {
 		id = ts,
 		date = self:FormatDate(ts),
-		timestamp = ts,
 		dungeon = run.dungeon or "Unknown",
-		mapID = run.mapID or 0,
 		level = run.level or 0,
-		timeMs = completionInfo and completionInfo.time or 0,
 		timeStr = self:FormatTime(completionInfo and completionInfo.time or 0),
 		affix = run.affix or "",
-		affixIDs = run.affixIDs or {},
 		bonus = completionInfo and completionInfo.keystoneUpgradeLevels or 0,
 		onTime = completionInfo and completionInfo.onTime or false,
 		completed = true,
 		members = run.members,
 		playerStats = playerStats,
 		totalDeaths = totalDeaths,
-		link = "",
-		description = "",
 	}
 end
 
@@ -306,21 +297,15 @@ function MPT:DT_BuildFailedRecord()
 	return {
 		id = ts,
 		date = self:FormatDate(ts),
-		timestamp = ts,
 		dungeon = run.dungeon or "Unknown",
-		mapID = run.mapID or 0,
 		level = run.level or 0,
-		timeMs = math.floor((GetTime() - (run.startTime or GetTime())) * 1000),
 		timeStr = self:FormatTime(math.floor((GetTime() - (run.startTime or GetTime())) * 1000)),
 		affix = run.affix or "",
-		affixIDs = run.affixIDs or {},
 		bonus = 0,
 		onTime = false,
 		members = run.members,
 		playerStats = playerStats,
 		totalDeaths = totalDeaths,
-		link = "",
-		description = "",
 	}
 end
 
@@ -470,7 +455,6 @@ function MPT:DT_OnZoneChanged(event)
 			if not self.activeRun then return end
 			local record = self:DT_BuildFailedRecord()
 			if record then
-				record.abandoned = true
 				self:AddRun(record)
 				self:Print("Run saved — " .. record.dungeon .. " +" .. record.level .. " (abandoned)")
 			end
