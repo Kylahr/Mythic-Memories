@@ -3642,7 +3642,7 @@ function MPT:ShowRemoteTableLoading()
 		lbg:SetAllPoints()
 		lbg:SetColorTexture(C.contentBg[1], C.contentBg[2], C.contentBg[3], 0.85)
 		local text = f:CreateFontString(nil, "OVERLAY", "MPTFont_Title")
-		text:SetPoint("CENTER")
+		text:SetPoint("CENTER", 0, 12)
 		text:SetText("Loading...")
 		text:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
 		f._text = text
@@ -3655,6 +3655,32 @@ function MPT:ShowRemoteTableLoading()
 				self._text:SetText("Loading" .. string.rep(".", self._dots))
 			end
 		end)
+
+		-- Cancel button
+		local cancelBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+		cancelBtn:SetSize(80, 24)
+		cancelBtn:SetPoint("TOP", text, "BOTTOM", 0, -8)
+		cancelBtn:SetBackdrop({
+			bgFile = "Interface\\Buttons\\WHITE8x8",
+			edgeFile = "Interface\\Buttons\\WHITE8x8",
+			edgeSize = 1,
+		})
+		cancelBtn:SetBackdropColor(0.3, 0.3, 0.3, 0.8)
+		cancelBtn:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
+		local cancelText = cancelBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Body")
+		cancelText:SetPoint("CENTER")
+		cancelText:SetText("Cancel")
+		cancelBtn:SetScript("OnClick", function()
+			MPT:CancelTableRequest()
+		end)
+		cancelBtn:SetScript("OnEnter", function(btn)
+			btn:SetBackdropColor(0.5, 0.3, 0.3, 0.9)
+		end)
+		cancelBtn:SetScript("OnLeave", function(btn)
+			btn:SetBackdropColor(0.3, 0.3, 0.3, 0.8)
+		end)
+		f.cancelBtn = cancelBtn
+
 		self.loadingFrame = f
 	end
 	self.loadingFrame:Show()

@@ -74,6 +74,11 @@ function MPT:PlayerDetect_OnPong(sender, data)
 	scanCache[nameKey] = { hasAddon = true, runCount = runCount, timestamp = GetTime() }
 
 	self:PlayerDetect_RefreshIfRelevant(nameKey)
+
+	-- Trigger background sync for this player if in a group
+	if IsInGroup() and not self.syncPaused then
+		self:SyncPartyMember(nameKey)
+	end
 end
 
 -- ── Tooltip helper ────────────────────────────────────────────
@@ -371,6 +376,11 @@ function MPT:PlayerDetect_OnZoneChanged()
 		end
 	end
 	if scanBtn then scanBtn:Hide() end
+end
+
+function MPT:PlayerDetect_HasAddon(nameKey)
+	local entry = GetCacheEntry(nameKey)
+	return entry and entry.hasAddon or false
 end
 
 -- ── ApplyTheme teardown ───────────────────────────────────────
