@@ -266,6 +266,7 @@ function MPT:DT_BuildRunRecord(completionInfo)
 		affixIDs = run.affixIDs or {},
 		bonus = completionInfo and completionInfo.keystoneUpgradeLevels or 0,
 		onTime = completionInfo and completionInfo.onTime or false,
+		completed = true,
 		members = run.members,
 		playerStats = playerStats,
 		totalDeaths = totalDeaths,
@@ -349,7 +350,7 @@ function MPT:DT_ScheduleCompletedCollection(completionInfo)
 		local record = self:DT_BuildRunRecord(completionInfo)
 		if record then
 			self:AddRun(record)
-			local status = record.onTime and "timed" or "depleted"
+			local status = record.onTime and "timed" or "completed, overtime"
 			self:Print("Run saved — " .. record.dungeon .. " +" .. record.level .. " (" .. status .. ")")
 		end
 		self:DT_CleanupActiveRun()

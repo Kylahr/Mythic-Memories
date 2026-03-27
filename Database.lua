@@ -338,13 +338,17 @@ function MPT:GetRuns(filterOpts)
 		-- Bonus: exact match on bonus value or depleted
 		if match and filterOpts.bonus and filterOpts.bonus ~= "" then
 			if filterOpts.bonus == "depleted" then
-				if run.onTime ~= false or run.bonus ~= 0 then
+				-- Only truly abandoned runs (not completed overtime)
+				if run.completed or run.onTime ~= false or run.bonus ~= 0 then
 					match = false
 				end
 			else
 				local bonusNum = tonumber(filterOpts.bonus)
 				if bonusNum then
-					if run.bonus ~= bonusNum or not run.onTime then
+					if run.bonus ~= bonusNum then
+						match = false
+					-- +0 filter matches completed overtime runs
+					elseif bonusNum > 0 and not run.onTime then
 						match = false
 					end
 				end
@@ -666,9 +670,9 @@ function MPT:FormatTime(ms)
 	return string.format("%d:%02d", minutes, seconds)
 end
 
-function MPT:GetBonusColor(bonus, onTime)
-	if not onTime and bonus == 0 then
-		return 1.0, 0.3, 0.3
+function MPT:GetBonusColor(bonus, onTime, completed)
+	if not onTime and bonus == 0 and not completed then
+		return 1.0, 0.3, 0.3  -- depleted red
 	end
 	if bonus >= 3 then
 		return 0, 0.8, 0

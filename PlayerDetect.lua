@@ -326,6 +326,7 @@ function MPT:PlayerDetect_CreateScanBtn()
 end
 
 function MPT:PlayerDetect_ShowScanBtn(name, realm)
+	if self.db and self.db.global.showTargetButton == false then return end
 	self:PlayerDetect_CreateScanBtn()
 	if not scanBtn then return end
 	scanBtn.mptTargetName = name

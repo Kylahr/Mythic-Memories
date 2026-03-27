@@ -1535,7 +1535,7 @@ end
 
 function MPT:PopulateRow(row, run)
 	local bonusText
-	if not run.onTime and run.bonus == 0 then
+	if not run.onTime and run.bonus == 0 and not run.completed then
 		bonusText = "Dep"
 	else
 		bonusText = "+" .. run.bonus
@@ -1622,7 +1622,7 @@ function MPT:PopulateRow(row, run)
 	row.cells[3]:SetTextColor(C.levelText[1], C.levelText[2], C.levelText[3])
 
 	-- Bonus text color from heatmap
-	local hr, hg, hb = self:GetBonusColor(run.bonus, run.onTime)
+	local hr, hg, hb = self:GetBonusColor(run.bonus, run.onTime, run.completed)
 	row.cells[6]:SetTextColor(hr, hg, hb)
 
 	-- Description icon
@@ -3041,7 +3041,7 @@ function MPT:CreateOptionsPanel()
 	if self.optionsPanel then return end
 
 	local panel = CreateFrame("Frame", "MPTOptionsPanel", self.mainFrame)
-	panel:SetSize(220, 264)
+	panel:SetSize(220, 290)
 	panel:SetPoint("TOPRIGHT", self.optionsBtn, "BOTTOMRIGHT", 0, -4)
 	panel:SetFrameStrata("DIALOG")
 
@@ -3073,10 +3073,22 @@ function MPT:CreateOptionsPanel()
 	end
 	panel.soundCheck = soundCheck
 
+	-- Target Button checkbox
+	local targetBtnCheck = self:CreateModernCheckbox(panel, "Target Button")
+	targetBtnCheck:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", 0, -6)
+	targetBtnCheck._onToggle = function(val)
+		MPT.db.global.showTargetButton = val
+		if not val and MPT.scanBtn then
+			MPT.scanBtn:Hide()
+		end
+	end
+	panel.targetBtnCheck = targetBtnCheck
+
+
 	-- Theme divider
 	local themeDiv = panel:CreateTexture(nil, "ARTWORK")
 	themeDiv:SetHeight(1)
-	themeDiv:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", -2, -10)
+	themeDiv:SetPoint("TOPLEFT", targetBtnCheck, "BOTTOMLEFT", -2, -10)
 	themeDiv:SetPoint("RIGHT", panel, "RIGHT", -12, 0)
 	themeDiv:SetColorTexture(C.divider[1], C.divider[2], C.divider[3], 1)
 
@@ -3163,6 +3175,7 @@ function MPT:ToggleOptionsPanel()
 		self.optionsPanel.shareCheck:SetChecked(self.db.global.shareTable)
 		self.optionsPanel.notifCheck:SetChecked(self.db.global.mvpNotifications ~= false)
 		self.optionsPanel.soundCheck:SetChecked(self.db.global.mvpSound ~= false)
+		self.optionsPanel.targetBtnCheck:SetChecked(self.db.global.showTargetButton ~= false)
 		self.optionsPanel:Show()
 	end
 end
@@ -3667,7 +3680,7 @@ function MPT:ShowRemoteTableLoading()
 		})
 		cancelBtn:SetBackdropColor(0.3, 0.3, 0.3, 0.8)
 		cancelBtn:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
-		local cancelText = cancelBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Body")
+		local cancelText = cancelBtn:CreateFontString(nil, "OVERLAY", "MPTFont_Cell")
 		cancelText:SetPoint("CENTER")
 		cancelText:SetText("Cancel")
 		cancelBtn:SetScript("OnClick", function()
@@ -3951,6 +3964,11 @@ function MPT:UpdateViewModeUI()
 		if self.optionsPanel then self.optionsPanel:Hide() end
 		if self.tableBtn then self.tableBtn:Hide() end
 		if self.tableManagerPanel then self.tableManagerPanel:Hide() end
+		-- Re-anchor stats button next to filter (since Tables button is hidden)
+		if self.statsBtn and self.filterBtn then
+			self.statsBtn:ClearAllPoints()
+			self.statsBtn:SetPoint("LEFT", self.filterBtn, "RIGHT", 8, 0)
+		end
 		-- Show remote table dropdown
 		self:CreateRemoteTableDropdown()
 		if self.remoteTableDD then
@@ -3966,7 +3984,14 @@ function MPT:UpdateViewModeUI()
 		self.backBtn:Hide()
 		if self.helpBtn then self.helpBtn:Show() end
 		if self.optionsBtn then self.optionsBtn:Show() end
-		if self.tableBtn then self.tableBtn:Show() end
+		if self.tableBtn then
+			self.tableBtn:Show()
+			-- Restore stats button anchor next to Tables button
+			if self.statsBtn then
+				self.statsBtn:ClearAllPoints()
+				self.statsBtn:SetPoint("LEFT", self.tableBtn, "RIGHT", 8, 0)
+			end
+		end
 		if self.remoteTableDD then self.remoteTableDD:Hide() end
 		if self.remoteTableListFrame then self.remoteTableListFrame:Hide() end
 		self.remoteTableList = nil

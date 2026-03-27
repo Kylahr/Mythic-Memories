@@ -173,6 +173,7 @@ function MPT:PackRunForShare(run)
 		a = run.affix,
 		b = run.bonus,
 		o = run.onTime,
+		cp = run.completed or nil,
 		td = run.totalDeaths,
 		m = members,
 	}
@@ -215,6 +216,7 @@ function MPT:UnpackSharedRun(packed)
 		affix = packed.a,
 		bonus = packed.b,
 		onTime = packed.o,
+		completed = packed.cp or false,
 		totalDeaths = packed.td or 0,
 		members = members,
 		playerStats = playerStats,
@@ -227,7 +229,7 @@ function MPT:OnTableRequest(sender, data, distribution)
 	-- Dedup: sender sends via both WHISPER and YELL; only respond once
 	local now = GetTime()
 	self._lastTableReqFrom = self._lastTableReqFrom or {}
-	if self._lastTableReqFrom[sender] and (now - self._lastTableReqFrom[sender]) < 5 then return end
+	if self._lastTableReqFrom[sender] and (now - self._lastTableReqFrom[sender]) < 1 then return end
 	self._lastTableReqFrom[sender] = now
 
 	if self.db.global.shareTable == false then
@@ -577,7 +579,7 @@ function MPT:OnTableListRequest(sender, distribution)
 	-- Dedup: sender sends via both WHISPER and YELL; only respond once
 	local now = GetTime()
 	self._lastTableListReqFrom = self._lastTableListReqFrom or {}
-	if self._lastTableListReqFrom[sender] and (now - self._lastTableListReqFrom[sender]) < 5 then return end
+	if self._lastTableListReqFrom[sender] and (now - self._lastTableListReqFrom[sender]) < 1 then return end
 	self._lastTableListReqFrom[sender] = now
 
 	if self.db.global.shareTable == false then return end
