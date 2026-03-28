@@ -156,6 +156,9 @@ function MPT:PackRunForShare(run)
 		if (s.hps or 0) > 0 then entry.hp = s.hps end
 		if (s.deaths or 0) > 0 then entry.dt = s.deaths end
 		if (s.interrupts or 0) > 0 then entry.ir = s.interrupts end
+		if (s.damageTaken or 0) > 0 then entry.dkt = s.damageTaken end
+		if (s.avoidable or 0) > 0 then entry.av = s.avoidable end
+		if (s.dispels or 0) > 0 then entry.ds = s.dispels end
 		members[#members + 1] = entry
 	end
 
@@ -196,6 +199,9 @@ function MPT:UnpackSharedRun(packed)
 			hps = pm.hp or 0,
 			deaths = pm.dt or 0,
 			interrupts = pm.ir or 0,
+			damageTaken = pm.dkt or 0,
+			avoidable = pm.av or 0,
+			dispels = pm.ds or 0,
 		}
 	end
 
