@@ -399,8 +399,6 @@ function MPT:DT_OnStart()
 	self:RegisterEvent("UNIT_PET", "DT_OnUnitPet")
 	self:RegisterEvent("PLAYER_DEAD", "DT_SnapshotDeaths")
 	self:RegisterEvent("PLAYER_REGEN_ENABLED", "DT_OnRegenDuringRun")
-	-- Pause background syncing during M+ key
-	self:PauseSyncing()
 end
 
 function MPT:DT_OnRegenDuringRun()
@@ -425,15 +423,11 @@ function MPT:DT_OnCompleted()
 	self.completionPending = true
 	local completionInfo = C_ChallengeMode.GetChallengeCompletionInfo()
 	self:DT_ScheduleCompletedCollection(completionInfo)
-	-- Resume background syncing after key completion (delay for data save)
-	self:ResumeSyncing(8)
 end
 
 function MPT:DT_OnReset()
 	if not self.activeRun then return end
 	self:DT_ScheduleFailedCollection()
-	-- Resume background syncing after key reset
-	self:ResumeSyncing(5)
 end
 
 function MPT:DT_OnZoneChanged(event)

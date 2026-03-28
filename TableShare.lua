@@ -6,8 +6,6 @@ local MAX_SHARED_RUNS = 50
 local REQUEST_TIMEOUT = 10
 local RETRY_MSG = "Request timed out, retrying..."
 local SYNC_CACHE_TTL = 300   -- 5 minutes
-local SYNC_STAGGER = 1.5     -- seconds between staggered sync requests
-local SYNC_POST_KEY_DELAY = 8 -- seconds after key completion before re-sync
 local LibDeflate = LibStub and LibStub("LibDeflate", true) or nil
 
 -- ── Central comm dispatcher ──────────────────────────────────────
@@ -89,9 +87,6 @@ end
 function MPT:RequestTable(name, realm, tableName)
 	local cacheTarget = name
 	if realm and realm ~= "" then cacheTarget = name .. "-" .. realm end
-
-	-- Clear any pending sync for this target (manual takes priority)
-	self.pendingSyncTargets[cacheTarget] = nil
 
 	-- Check sync cache for instant display (only for default table, not named tables)
 	if not tableName then
@@ -357,33 +352,6 @@ function MPT:OnRawAddonMessage(event, prefix, message, distribution, sender)
 end
 
 function MPT:OnTableResponse(sender, data)
-	-- Route to sync cache if this is a background sync response
-	if self.pendingSyncTargets[sender] then
-		self.pendingSyncTargets[sender] = nil
-		if data and data.r then
-			local runs = {}
-			for i, packed in ipairs(data.r) do
-				runs[i] = self:UnpackSharedRun(packed)
-			end
-			local mvps = {}
-			for nameRealm, val in pairs(data.v or {}) do
-				nameRealm = self:NormalizeNameRealm(nameRealm)
-				if type(val) == "table" then
-					mvps[nameRealm] = { class = val.c or nil, note = val.n or nil }
-				else
-					mvps[nameRealm] = { class = (val ~= true) and val or nil }
-				end
-			end
-			self.syncCache[sender] = {
-				runs = runs,
-				mvps = mvps,
-				senderClass = data.sc,
-				timestamp = GetTime(),
-			}
-		end
-		return
-	end
-
 	if not self.pendingTableRequest then return end
 
 	self.pendingTableRequest = nil
@@ -436,7 +404,7 @@ function MPT:OnTableResponse(sender, data)
 end
 
 function MPT:OnTableResponseCompressed(sender, encoded)
-	if not self.pendingTableRequest and not self.pendingSyncTargets[sender] then return end
+	if not self.pendingTableRequest then return end
 
 	-- Support wrapped format { z = encoded, _target = ... } from YELL responses
 	if type(encoded) == "table" then encoded = encoded.z end
@@ -625,9 +593,6 @@ MPT.partyMvpCache = {}
 -- Background sync of party members' tables for instant viewing.
 
 MPT.syncCache = {}             -- [target] -> { runs, mvps, senderClass, timestamp }
-MPT.pendingSyncTargets = {}    -- set of targets being background-synced
-MPT.syncPaused = false         -- true during active M+ key
-MPT.syncTimers = {}            -- C_Timer handles for staggered requests
 
 function MPT:GetSyncCacheEntry(target)
 	local entry = self.syncCache[target]
@@ -637,76 +602,6 @@ function MPT:GetSyncCacheEntry(target)
 		return nil
 	end
 	return entry
-end
-
-function MPT:SyncPartyMember(target)
-	if self.syncPaused then return end
-	if self:GetSyncCacheEntry(target) then return end
-	if self.pendingSyncTargets[target] then return end
-
-	self.pendingSyncTargets[target] = true
-	local data = { _target = target }
-	local msg = self:Serialize("TABLE_REQ", data)
-	self:SendCommMessage(COMM_PREFIX, msg, "WHISPER", target, "BULK")
-	self:SendCommMessage(COMM_PREFIX, msg, "YELL", nil, "BULK")
-end
-
-function MPT:SchedulePartySync()
-	self:CancelPendingSyncTimers()
-	if not IsInGroup() then return end
-	if self.syncPaused then return end
-
-	local targets = {}
-	local prefix = IsInRaid() and "raid" or "party"
-	local count = GetNumGroupMembers()
-	local myName = UnitName("player")
-
-	for i = 1, count do
-		local unit = (prefix == "party") and (i < count and ("party" .. i) or "player") or ("raid" .. i)
-		local name, realm = UnitName(unit)
-		if name and name ~= myName then
-			if not realm or realm == "" then realm = GetRealmName() end
-			local target = name .. "-" .. realm
-			-- Only sync members who have the addon
-			if self:PlayerDetect_HasAddon(target) then
-				targets[#targets + 1] = target
-			end
-		end
-	end
-
-	for i, target in ipairs(targets) do
-		local timer = C_Timer.After((i - 1) * SYNC_STAGGER, function()
-			if not self.syncPaused then
-				self:SyncPartyMember(target)
-			end
-		end)
-		self.syncTimers[#self.syncTimers + 1] = timer
-	end
-end
-
-function MPT:CancelPendingSyncTimers()
-	for _, timer in ipairs(self.syncTimers) do
-		if timer and timer.Cancel then timer:Cancel() end
-	end
-	wipe(self.syncTimers)
-end
-
-function MPT:PauseSyncing()
-	self.syncPaused = true
-	self:CancelPendingSyncTimers()
-	wipe(self.pendingSyncTargets)
-end
-
-function MPT:ResumeSyncing(delay)
-	if delay and delay > 0 then
-		C_Timer.After(delay, function()
-			self.syncPaused = false
-			self:SchedulePartySync()
-		end)
-	else
-		self.syncPaused = false
-		self:SchedulePartySync()
-	end
 end
 
 function MPT:BuildBrowseMvpsPayload()
@@ -775,7 +670,6 @@ end
 function MPT:PurgeSyncCache()
 	if not IsInGroup() then
 		self.syncCache = {}
-		self.pendingSyncTargets = {}
 		return
 	end
 
@@ -797,14 +691,6 @@ function MPT:PurgeSyncCache()
 			local baseName = target:match("^([^%-]+)")
 			if not groupMembers[baseName] then
 				self.syncCache[target] = nil
-			end
-		end
-	end
-	for target in pairs(self.pendingSyncTargets) do
-		if not groupMembers[target] then
-			local baseName = target:match("^([^%-]+)")
-			if not groupMembers[baseName] then
-				self.pendingSyncTargets[target] = nil
 			end
 		end
 	end

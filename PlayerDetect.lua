@@ -74,11 +74,6 @@ function MPT:PlayerDetect_OnPong(sender, data)
 	scanCache[nameKey] = { hasAddon = true, runCount = runCount, timestamp = GetTime() }
 
 	self:PlayerDetect_RefreshIfRelevant(nameKey)
-
-	-- Trigger background sync for this player if in a group
-	if IsInGroup() and not self.syncPaused then
-		self:SyncPartyMember(nameKey)
-	end
 end
 
 -- ── Tooltip helper ────────────────────────────────────────────

@@ -186,13 +186,6 @@ function MPT:OnGroupRosterUpdate()
 		end)
 	end
 
-	-- Trigger background sync for party members (after PING/PONG settles)
-	C_Timer.After(3, function()
-		if IsInGroup() then
-			MPT:SchedulePartySync()
-		end
-	end)
-
 	self.partyMvpMembers = currentMembers
 end
 
@@ -200,8 +193,6 @@ function MPT:OnGroupLeft()
 	self.partyMvpCache = {}
 	self.partyMvpMembers = {}
 	self.syncCache = {}
-	self.pendingSyncTargets = {}
-	self:CancelPendingSyncTimers()
 end
 
 function MPT:SlashCommand(input)
