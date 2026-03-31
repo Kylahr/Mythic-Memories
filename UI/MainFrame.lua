@@ -267,25 +267,31 @@ function MPT:ApplyTheme(themeKey)
 	end
 end
 
--- ── Custom font objects ───────────────────────────────────────
-local FONT_FILE = "Fonts\\ARIALN.TTF"
+-- ── Custom font objects (inherit GameFontNormal for FRIZQT + Cyrillic fallback) ──
+local FONT_FILE = "Fonts\\FRIZQT__.TTF"
+
 local MPTFont_Title = CreateFont("MPTFont_Title")
+MPTFont_Title:CopyFontObject(GameFontNormal)
 MPTFont_Title:SetFont(FONT_FILE, 14, "")
 MPTFont_Title:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
 
 local MPTFont_Header = CreateFont("MPTFont_Header")
+MPTFont_Header:CopyFontObject(GameFontNormal)
 MPTFont_Header:SetFont(FONT_FILE, 11, "")
 MPTFont_Header:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
 
 local MPTFont_Cell = CreateFont("MPTFont_Cell")
+MPTFont_Cell:CopyFontObject(GameFontNormal)
 MPTFont_Cell:SetFont(FONT_FILE, 11, "")
 MPTFont_Cell:SetTextColor(C.textPrimary[1], C.textPrimary[2], C.textPrimary[3])
 
 local MPTFont_Label = CreateFont("MPTFont_Label")
+MPTFont_Label:CopyFontObject(GameFontNormal)
 MPTFont_Label:SetFont(FONT_FILE, 10, "")
 MPTFont_Label:SetTextColor(C.textLabel[1], C.textLabel[2], C.textLabel[3])
 
 local MPTFont_Small = CreateFont("MPTFont_Small")
+MPTFont_Small:CopyFontObject(GameFontNormal)
 MPTFont_Small:SetFont(FONT_FILE, 10, "")
 MPTFont_Small:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3])
 local COLUMNS = {
