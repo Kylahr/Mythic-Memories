@@ -178,7 +178,7 @@ function MPT:DT_CollectAllStats(members)
 		stats[m.guid] = {
 			damage = 0, dps = 0,
 			healing = 0, hps = 0,
-			damageTaken = 0, avoidable = 0,
+			damageTaken = 0,
 			deaths = 0, interrupts = 0, dispels = 0,
 		}
 	end

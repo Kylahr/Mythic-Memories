@@ -268,7 +268,7 @@ function MPT:ApplyTheme(themeKey)
 end
 
 -- ── Custom font objects ───────────────────────────────────────
-local FONT_FILE = "Fonts\\FRIZQT__.TTF"
+local FONT_FILE = "Fonts\\ARIALN.TTF"
 local MPTFont_Title = CreateFont("MPTFont_Title")
 MPTFont_Title:SetFont(FONT_FILE, 14, "")
 MPTFont_Title:SetTextColor(C.accent[1], C.accent[2], C.accent[3])
