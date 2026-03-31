@@ -161,6 +161,33 @@ function MPT:OnGroupRosterUpdate()
 						class = class,
 						note = note,
 					}
+				else
+					-- Check synced MVPs from party members
+					local partyHits = self:CheckPartyMvp(nameRealm)
+					if #partyHits > 0 then
+						local hit = partyHits[1]
+						-- Look up sender's class from group
+						local viaClass
+						for j = 1, count do
+							local u = (prefix == "party") and (j < count and ("party" .. j) or "player") or ("raid" .. j)
+							local uName, uRealm = UnitName(u)
+							if uName then
+								local senderBase = hit.sender:match("^([^%-]+)")
+								if uName == senderBase or uName == hit.sender then
+									local _, uc = UnitClass(u)
+									viaClass = uc
+									break
+								end
+							end
+						end
+						mvpJoiners[#mvpJoiners + 1] = {
+							name = nameRealm,
+							class = class,
+							note = hit.note ~= "" and hit.note or nil,
+							via = hit.sender,
+							viaClass = viaClass,
+						}
+					end
 				end
 			end
 		end
@@ -220,10 +247,6 @@ function MPT:SlashCommand(input)
 		else
 			self:Print("Current share limit: " .. (self.shareLimit or 50) .. ". Usage: /mm limit <number>")
 		end
-	elseif cmd == "dev" then
-		self:ToggleDevMode()
-	elseif cmd == "endrun" then
-		self:EndDevRun()
 	else
 		self:Print("Usage: /mm - toggle UI")
 	end

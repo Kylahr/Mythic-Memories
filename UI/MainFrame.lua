@@ -241,7 +241,6 @@ function MPT:ApplyTheme(themeKey)
 		self.removeMvpDialog = nil
 		self.addNoteDialog = nil
 		self.rowContextMenu = nil
-		self.mvpDropdown = nil
 		self.notifFrame = nil
 		self.linkCopyPopup = nil
 		self.expandedRunId = nil
@@ -832,7 +831,7 @@ function MPT:CreateMainFrame()
 	self:CreateFilterBar(tableCard)
 
 	self:CreateColumnHeaders(tableCard)
-	self:CreateScrollFrame(tableCard, tableWidth)
+	self:CreateScrollFrame(tableCard)
 
 	-- ── MVP card (elevated panel) ──────────────────────────────
 	self:CreateMvpsSidePanel(frame)
@@ -1007,7 +1006,7 @@ function MPT:CreateColumnHeaders(parent)
 	self.headerFrame = header
 end
 
-function MPT:CreateScrollFrame(parent, tableWidth)
+function MPT:CreateScrollFrame(parent)
 	local scrollParent = CreateFrame("Frame", nil, parent)
 	scrollParent:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -30 - HEADER_HEIGHT)
 	scrollParent:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
@@ -2953,9 +2952,15 @@ function MPT:ShowMvpJoinNotification(mvpList)
 		nameLine:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
 		nameLine:SetJustifyH("LEFT")
 
-		nameLine:SetText(mvp.name)
 		local cr, cg, cb = self:GetClassColor(mvp.class)
-		nameLine:SetTextColor(cr, cg, cb)
+		local classHex = string.format("%02x%02x%02x", math.floor(cr * 255), math.floor(cg * 255), math.floor(cb * 255))
+		local displayName = "|cFF" .. classHex .. mvp.name .. "|r"
+		if mvp.via then
+			local viaColored = self:ClassColoredName(mvp.via, mvp.viaClass)
+			displayName = displayName .. "  (via " .. viaColored .. ")"
+		end
+		nameLine:SetText(displayName)
+		nameLine:SetTextColor(1, 1, 1)
 		nameLine:Show()
 		lineIdx = lineIdx + 1
 		yOff = yOff - 15
@@ -3073,9 +3078,20 @@ function MPT:CreateOptionsPanel()
 	end
 	panel.soundCheck = soundCheck
 
+	-- Party MVP Sync checkbox
+	local partySyncCheck = self:CreateModernCheckbox(panel, "Party MVP Sync")
+	partySyncCheck:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", 0, -6)
+	partySyncCheck._onToggle = function(val)
+		MPT.db.global.partyMvpSync = val
+		if not val then
+			MPT.partyMvpCache = {}
+		end
+	end
+	panel.partySyncCheck = partySyncCheck
+
 	-- Target Button checkbox
 	local targetBtnCheck = self:CreateModernCheckbox(panel, "Target Button")
-	targetBtnCheck:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", 0, -6)
+	targetBtnCheck:SetPoint("TOPLEFT", partySyncCheck, "BOTTOMLEFT", 0, -6)
 	targetBtnCheck._onToggle = function(val)
 		MPT.db.global.showTargetButton = val
 		if not val and MPT.scanBtn then
@@ -3175,6 +3191,7 @@ function MPT:ToggleOptionsPanel()
 		self.optionsPanel.shareCheck:SetChecked(self.db.global.shareTable)
 		self.optionsPanel.notifCheck:SetChecked(self.db.global.mvpNotifications ~= false)
 		self.optionsPanel.soundCheck:SetChecked(self.db.global.mvpSound ~= false)
+		self.optionsPanel.partySyncCheck:SetChecked(self.db.global.partyMvpSync ~= false)
 		self.optionsPanel.targetBtnCheck:SetChecked(self.db.global.showTargetButton ~= false)
 		self.optionsPanel:Show()
 	end

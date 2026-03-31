@@ -15,7 +15,6 @@ end
 
 function MPT:HideAllPopups()
 	if self.editPopup then self.editPopup:Hide() end
-	if self.mvpDropdown then self.mvpDropdown:Hide() end
 	if self.linkCopyPopup then self.linkCopyPopup:Hide() end
 	if self.optionsPanel then self.optionsPanel:Hide() end
 	if self.resetDialog then self.resetDialog:Hide() end
@@ -305,111 +304,6 @@ function MPT:SaveEditPopup()
 		MPT:RefreshTable()
 	end
 	popup:Hide()
-end
-
--- ── MVP dropdown (per-run toggle) ────────────────────────
-
-function MPT:ShowMvpDropdown(runId, anchorFrame)
-	if self.mvpDropdown and self.mvpDropdown:IsShown() and self.mvpDropdown.runId == runId then
-		self:HideAllPopups()
-		return
-	end
-	self:HideAllPopups()
-
-	local run = self:GetRun(runId)
-	if not run then return end
-
-	if not self.mvpDropdown then
-		self:CreateMvpDropdown()
-	end
-
-	local dropdown = self.mvpDropdown
-	dropdown.runId = runId
-
-	if dropdown.buttons then
-		for _, btn in ipairs(dropdown.buttons) do
-			btn:Hide()
-		end
-	end
-	dropdown.buttons = dropdown.buttons or {}
-
-	local members = run.members or {}
-	local height = 8
-	for i, member in ipairs(members) do
-		local btn = dropdown.buttons[i]
-		if not btn then
-			btn = CreateFrame("Button", nil, dropdown)
-			btn:SetHeight(20)
-			btn:SetPoint("TOPLEFT", dropdown, "TOPLEFT", 4, -(4 + (i - 1) * 20))
-			btn:SetPoint("TOPRIGHT", dropdown, "TOPRIGHT", -4, -(4 + (i - 1) * 20))
-
-			btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-			btn.text:SetPoint("LEFT", btn, "LEFT", 4, 0)
-
-			btn.check = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-			btn.check:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
-
-			local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
-			highlight:SetAllPoints()
-			highlight:SetColorTexture(P().bubbleHover[1], P().bubbleHover[2], P().bubbleHover[3], P().bubbleHover[4])
-
-			dropdown.buttons[i] = btn
-		end
-
-		local nameRealm = member.name .. "-" .. (member.realm or "")
-		local isMvp = self:IsMvp(nameRealm)
-
-		btn.text:SetText(member.name)
-		local r, g, b = self:GetClassColor(member.class)
-		btn.text:SetTextColor(r, g, b)
-
-		btn.check:SetText(isMvp and "x" or "")
-		btn.check:SetTextColor(P().checkGreen[1], P().checkGreen[2], P().checkGreen[3])
-
-		btn.nameRealm = nameRealm
-		btn.memberClass = member.class
-		btn.addedBy = UnitName("player")
-		btn:SetScript("OnClick", function(self)
-			if MPT:IsMvp(self.nameRealm) then
-				MPT:RemoveMvp(self.nameRealm)
-				self.check:SetText("")
-			else
-				MPT:AddMvp(self.nameRealm, self.addedBy, self.memberClass)
-				self.check:SetText("x")
-			end
-			MPT:OnMvpChanged()
-		end)
-
-		btn:Show()
-		height = height + 20
-	end
-
-	dropdown:SetHeight(height + 4)
-
-	if anchorFrame then
-		dropdown:ClearAllPoints()
-		dropdown:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -2)
-	else
-		dropdown:ClearAllPoints()
-		dropdown:SetPoint("CENTER", UIParent, "CENTER")
-	end
-
-	dropdown:Show()
-end
-
-function MPT:CreateMvpDropdown()
-	local dropdown = CreateFrame("Frame", "MPTMvpDropdown", UIParent)
-	dropdown:SetSize(150, 100)
-	dropdown:SetPoint("CENTER", UIParent, "CENTER")
-	dropdown:SetFrameStrata("DIALOG")
-	dropdown:EnableMouse(true)
-
-	local bg = dropdown:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints()
-	bg:SetColorTexture(P().popupBg[1], P().popupBg[2], P().popupBg[3], 1)
-
-	dropdown:Hide()
-	self.mvpDropdown = dropdown
 end
 
 -- ── Link copy popup ────────────────────────────────────────────

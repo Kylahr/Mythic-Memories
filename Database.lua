@@ -587,13 +587,6 @@ function MPT:GetStatColumnsTotalWidth()
 	return total
 end
 
-function MPT:SwapStatColumns(i, j)
-	local cols = self.db.global.statColumns
-	if i >= 1 and i <= #cols and j >= 1 and j <= #cols then
-		cols[i], cols[j] = cols[j], cols[i]
-	end
-end
-
 -- ── MVP functions ───────────────────────────────────────────────
 
 function MPT:AddMvp(nameRealm, addedBy, class, note)

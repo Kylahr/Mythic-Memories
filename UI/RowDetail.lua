@@ -604,8 +604,3 @@ function MPT:ExpandRow(row)
 	detail:Show()
 end
 
-function MPT:CollapseRow(row)
-	if row.detailFrame then
-		row.detailFrame:Hide()
-	end
-end

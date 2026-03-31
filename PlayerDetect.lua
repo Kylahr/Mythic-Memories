@@ -374,11 +374,6 @@ function MPT:PlayerDetect_OnZoneChanged()
 	if scanBtn then scanBtn:Hide() end
 end
 
-function MPT:PlayerDetect_HasAddon(nameKey)
-	local entry = GetCacheEntry(nameKey)
-	return entry and entry.hasAddon or false
-end
-
 -- ── ApplyTheme teardown ───────────────────────────────────────
 
 function MPT:PlayerDetect_DestroyUI()

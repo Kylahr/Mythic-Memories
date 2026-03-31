@@ -620,16 +620,19 @@ end
 
 function MPT:BroadcastBrowseMvps()
 	if not IsInGroup() then return end
+	if self.db.global.partyMvpSync == false then return end
 	self:SendCommMessage(COMM_PREFIX, self:BuildBrowseMvpsPayload(), "PARTY")
 end
 
 function MPT:WhisperBrowseMvps(targetName)
 	if not targetName then return end
+	if self.db.global.partyMvpSync == false then return end
 	self:SendCommMessage(COMM_PREFIX, self:BuildBrowseMvpsPayload(), "WHISPER", targetName)
 end
 
 function MPT:OnBrowseMvpsReceived(sender, data)
 	if not data then return end
+	if self.db.global.partyMvpSync == false then return end
 
 	if data.mvps then
 		self.partyMvpCache[sender] = data.mvps
